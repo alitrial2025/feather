@@ -1,0 +1,14 @@
+@Composable fun Header(title: String) {
+    Row(
+        Text(
+            text = "$title",
+            color = "#E0E0FF",
+            fontSize = 28,
+            fontWeight = "bold"
+        ),
+        background = "#1a1a2e",
+        padding = 20,
+        width = "match",
+        alignment = "center"
+    )
+}

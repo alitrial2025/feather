@@ -1,0 +1,266 @@
+@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class, androidx.annotation.OptIn::class)
+package com.youtubekids.youtube.ui.screens
+
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.annotation.OptIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import androidx.tv.material3.*
+import com.youtubekids.youtube.data.model.Video
+import com.youtubekids.youtube.data.repository.YouTubeRepository
+import com.youtubekids.youtube.ui.components.KidsVideoPlayerOverlay
+import com.youtubekids.youtube.ui.components.MagicKidsLoader
+import com.youtubekids.youtube.ui.player.setYouTubeStream
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
+@OptIn(UnstableApi::class)
+@Composable
+fun KidsVideoPlayerScreen(
+    video: Video,
+    repository: YouTubeRepository,
+    exoPlayer: ExoPlayer,
+    onClose: () -> Unit
+) {
+    var currentVideo by remember { mutableStateOf(video) }
+    var isPlaying by remember { mutableStateOf(true) }
+    var progress by remember { mutableFloatStateOf(0f) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var upNext by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // 1. Fetch Stream
+    LaunchedEffect(currentVideo.id) {
+        loading = true
+        error = null
+        progress = 0f
+        controlsVisible = true
+        try {
+            val stream = repository.getStream(currentVideo.id)
+            if (stream != null) {
+                exoPlayer.setYouTubeStream(stream)
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                exoPlayer.play()
+                isPlaying = true
+                loading = false
+            } else {
+                error = "Oops! This video is sleeping."
+                loading = false
+            }
+        } catch (e: Exception) {
+            error = "Network issue. Try again!"
+            loading = false
+        }
+    }
+
+    // Fetch related kids content separately so it never blocks playback.
+    LaunchedEffect(currentVideo.id) {
+        upNext = try {
+            repository.getKidsUpNext(currentVideo.id)
+                .filter { it.id.isNotBlank() && it.id != currentVideo.id }
+                .ifEmpty { repository.getKidsCategory("explore") }
+                .distinctBy { it.id }
+                .take(10)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    // 2. Track Progress and Visibility
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            if (exoPlayer.duration > 0) {
+                progress = exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
+            }
+            delay(500)
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    loading = false
+                }
+            }
+
+            override fun onPlayerError(e: PlaybackException) {
+                error = "Playback failed. Try another video."
+                loading = false
+                isPlaying = false
+            }
+        }
+
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+        }
+    }
+
+    // Auto-hide controls
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            delay(8000) // Longer delay for kids
+            controlsVisible = false
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        // Video View
+        AndroidView(
+            factory = { context ->
+                PlayerView(context).apply {
+                    player = exoPlayer
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            },
+            update = { playerView ->
+                playerView.player = exoPlayer
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Loading State
+        if (loading) {
+            MagicKidsLoader()
+        }
+
+        // Overlay
+        if (controlsVisible && !loading && error == null) {
+            KidsVideoPlayerOverlay(
+                title = currentVideo.title,
+                isPlaying = isPlaying,
+                progress = progress,
+                upNext = upNext,
+                onClose = onClose,
+                onTogglePlay = {
+                    isPlaying = !isPlaying
+                    exoPlayer.playWhenReady = isPlaying
+                },
+                onSelectVideo = { nextVideo ->
+                    currentVideo = nextVideo.copy(contentType = "kids")
+                }
+            )
+        }
+
+        // Error State
+        if (error != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Sad face
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(Color.White.copy(alpha = 0.1f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("😢", fontSize = 28.sp)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(error!!, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Surface(
+                        onClick = onClose,
+                        modifier = Modifier.height(44.dp),
+                        shape = ClickableSurfaceDefaults.shape(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+                        colors = ClickableSurfaceDefaults.colors(containerColor = Color.White, focusedContainerColor = Color(0xFFF72585))
+                    ) {
+                        Box(modifier = Modifier.fillMaxHeight().padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+                            Text("Go Back", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Focus management
+        val backgroundFocusRequester = remember { FocusRequester() }
+
+        LaunchedEffect(controlsVisible) {
+            if (!controlsVisible && !loading && error == null) {
+                try {
+                    backgroundFocusRequester.requestFocus()
+                } catch (e: Exception) {}
+            }
+        }
+
+        // Interaction Area to show controls
+        if (!controlsVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusRequester(backgroundFocusRequester)
+                    .focusable()
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown) {
+                            when (event.nativeKeyEvent.keyCode) {
+                                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                                android.view.KeyEvent.KEYCODE_SPACE -> {
+                                    isPlaying = !isPlaying
+                                    exoPlayer.playWhenReady = isPlaying
+                                    controlsVisible = true
+                                    return@onKeyEvent true
+                                }
+                                android.view.KeyEvent.KEYCODE_BACK,
+                                android.view.KeyEvent.KEYCODE_ESCAPE -> {
+                                    // If controls are hidden, let the system handle Back to close the screen
+                                    return@onKeyEvent false
+                                }
+                                else -> {
+                                    // Any other key shows the controls
+                                    controlsVisible = true
+                                    return@onKeyEvent true
+                                }
+                            }
+                        }
+                        false
+                    }
+            )
+        }
+
+        // Handle back button when controls are visible
+        androidx.activity.compose.BackHandler(enabled = controlsVisible) {
+            controlsVisible = false
+        }
+    }
+}

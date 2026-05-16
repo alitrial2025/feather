@@ -1,0 +1,148 @@
+{
+  "type": "render",
+  "protocol_version": 1,
+  "root": {
+    "type": "Column",
+    "style": {
+      "padding": 16,
+      "spacing": 16,
+      "background": "#FAFBFC",
+      "width": "match"
+    },
+    "children": [
+      {
+        "type": "Row",
+        "style": {
+          "background": "#1a1a2e",
+          "padding": 20,
+          "width": "match",
+          "alignment": "center"
+        },
+        "children": [
+          {
+            "type": "Text",
+            "text": "🪶 Feather Demo",
+            "style": {
+              "color": "#E0E0FF",
+              "fontSize": 28,
+              "fontWeight": "bold"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Spacer",
+        "flex": 1
+      },
+      {
+        "type": "Column",
+        "style": {
+          "background": "#F8F9FA",
+          "padding": 24,
+          "cornerRadius": 16,
+          "borderColor": "#E0E0E0",
+          "borderWidth": 1,
+          "width": "match",
+          "spacing": 8
+        },
+        "children": [
+          {
+            "type": "Text",
+            "text": "Welcome to Feather",
+            "style": {
+              "color": "#333333",
+              "fontSize": 22,
+              "fontWeight": "600"
+            }
+          },
+          {
+            "type": "Text",
+            "text": "Build native KMP apps without Gradle.",
+            "style": {
+              "color": "#666666",
+              "fontSize": 14
+            }
+          }
+        ]
+      },
+      {
+        "type": "Spacer",
+        "flex": 1
+      },
+      {
+        "type": "TextInput",
+        "value": "",
+        "placeholder": "Type your name",
+        "action": "nameChanged",
+        "style": {
+          "background": "#FFFFFF",
+          "cornerRadius": 12,
+          "borderColor": "#667eea",
+          "borderWidth": 2,
+          "padding": 12
+        }
+      },
+      {
+        "type": "StateText",
+        "key": "nameChanged",
+        "prefix": "Hello, ",
+        "fallback": "Hello, stranger!",
+        "style": {
+          "color": "#667eea",
+          "fontSize": 16,
+          "fontWeight": "500"
+        }
+      },
+      {
+        "type": "Spacer",
+        "flex": 1
+      },
+      {
+        "type": "Row",
+        "style": {
+          "spacing": 12,
+          "alignment": "center"
+        },
+        "children": [
+          {
+            "type": "Button",
+            "text": "Primary Action",
+            "action": "primaryButtonPressed",
+            "style": {
+              "background": "#667eea",
+              "textColor": "#FFFFFF",
+              "cornerRadius": 12,
+              "paddingHorizontal": 24,
+              "paddingVertical": 12,
+              "fontWeight": "bold"
+            }
+          },
+          {
+            "type": "Button",
+            "text": "Secondary",
+            "action": "secondaryPressed",
+            "style": {
+              "background": "#F0F0F0",
+              "textColor": "#333333",
+              "cornerRadius": 12,
+              "paddingHorizontal": 24,
+              "paddingVertical": 12
+            }
+          }
+        ]
+      },
+      {
+        "type": "StateText",
+        "key": "primaryButtonPressed",
+        "prefix": "Clicks: ",
+        "fallback": "Clicks: 0",
+        "style": {
+          "color": "#999999",
+          "fontSize": 12,
+          "textAlign": "center"
+        }
+      }
+    ]
+  },
+  "diagnostics": []
+}

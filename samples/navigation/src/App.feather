@@ -1,0 +1,27 @@
+@Import("components/Header")
+
+val currentTab = "home"
+
+Scaffold {
+    Column {
+        Header(title = "Feather Navigation")
+        
+        Spacer()
+        
+        Condition(key = "currentTab == 'home'") {
+            Column {
+                Text(text = "Home Screen", fontSize = 24)
+                Button(text = "Go to Profile", action = "currentTab = 'profile'")
+            }
+        }
+        
+        Condition(key = "currentTab == 'profile'") {
+            Column {
+                Text(text = "User Profile", fontSize = 24)
+                Button(text = "Go to Home", action = "currentTab = 'home'")
+            }
+        }
+        
+        Spacer()
+    }
+}

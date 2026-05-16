@@ -1,0 +1,10 @@
+{
+  "entry": "src/commonMain/kotlin/com/example/helloworld/App.kt",
+  "assets": [
+    "src/commonMain/resources"
+  ],
+  "generatedIr": "build/generated/ksp/metadata/commonMain/kotlin/feather/app.feather.json",
+  "fallbackIr": ".feather/app.feather.json",
+  "sdkVersion": "1.0.0",
+  "modules": {}
+}
