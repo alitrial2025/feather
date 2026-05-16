@@ -1,100 +1,95 @@
 # Feather 🪶
 
-**Feather** is a next-generation development platform for Kotlin Multiplatform (KMP) that provides an "Expo Go" experience — zero-Gradle UI iteration with truly native rendering.
+**Feather** is a next-generation high-performance native delivery platform for Kotlin Multiplatform (KMP). It enables developers to build truly native apps with Kotlin that are delivered dynamically to host shells on Android and iOS with near-instant hot-reloads and zero-copy binary performance.
 
-## How It Works
+## 🚀 Key Features
+
+- **Zero-Gradle UI Iteration**: Update your app's UI and logic instantly over the air using the Feather UI (FUI) language.
+- **Truly Native**: High-performance rendering using Jetpack Compose (Android) and SwiftUI (iOS).
+- **Binary Protocol (Zero-Copy)**: Powered by **FlexBuffers** and **MessagePack** for ultra-fast, memory-efficient UI updates.
+- **Full Kotlin Support**: Authoritative logic resides in a robust **WasmGC** runtime, supporting the full power of Kotlin.
+- **Bridge Factory**: Automatically scale to thousands of native APIs via our dynamic reflection bridge.
+- **Universal Contract**: One UI codebase, identical behavior on all platforms.
+
+## 🏗️ Architecture: The High-Performance Pivot
+
+Feather 2.0 has moved beyond simple JSON rendering to a professional-grade binary pipeline:
 
 ```
-Developer writes Kotlin          CLI parses & streams JSON         Host renders native UI
-┌─────────────────────┐          ┌─────────────────────┐          ┌─────────────────────┐
-│  App.kt             │  ─────▶  │  feather start      │  ─────▶  │  Feather Host App   │
-│  Column(            │  file    │  WebSocket server   │  ws://   │  Jetpack Compose /  │
-│    Text("Hello"),   │  watch   │  AST → JSON         │  JSON    │  SwiftUI            │
-│    Button(...)      │          │  State management   │          │  ModuleRegistry     │
-│  )                  │          │  Bundle system      │          │  Dynamic renderer   │
-└─────────────────────┘          └─────────────────────┘          └─────────────────────┘
+Source (.fthr / .kt) ➔ FUI Compiler (Rust/Pest) ➔ Binary IR (.fxb / .mp) ➔ Host Shell (Compose/SwiftUI)
 ```
 
-## Technical Stack
+| Feature | Technology | Benefit |
+|---------|------------|---------|
+| **UI Language** | **Feather UI (.fthr)** | 100% reliable parsing, sub-100ms hot-reloads. |
+| **Logic** | **Kotlin/WasmGC** | Native speed for business logic, fully sandboxed. |
+| **Protocol** | **FlexBuffers** | Zero-copy deserialization; host reads IR directly from memory. |
+| **Bridge** | **MessagePack** | High-speed, binary host-to-core communication. |
+| **Ecosystem** | **Bridge Factory** | Automated access to any Android/iOS API via reflection. |
 
-| Layer      | Technology        | Purpose                              |
-|------------|-------------------|--------------------------------------|
-| **Core**   | Rust + UniFFI     | State management, protocol, bundling |
-| **CLI**    | Rust (clap/warp)  | Dev server, file watcher, bundler    |
-| **SDK**    | Kotlin (KMP)      | UI primitives, module contracts      |
-| **Host**   | Compose / SwiftUI | Dynamic native rendering             |
-| **Compiler** | KSP            | Kotlin → Feather IR generation       |
-
-## Project Structure
+## 🛠️ Project Structure
 
 ```
 feather/
-├── core/               Rust logic engine (UniFFI bindings)
-├── cli/                Rust CLI (dev server, bundler, package manager)
+├── core/               Rust logic engine (WasmGC, FlexBuffers, UniFFI)
+├── cli/                Rust CLI (Optimizing Compiler, Bundler, Dev Server)
 ├── host/
-│   ├── android/        Jetpack Compose host app
-│   └── ios/            SwiftUI host app
-├── sdk/                KMP UI primitives & module contracts
-├── compiler/ksp/       KSP processor (Kotlin → Feather IR)
-├── samples/
-│   ├── hello-world/    Sample Feather project
-│   └── modules/        Sample native module (feather-camera)
-├── scripts/            Build scripts for cross-compilation
-└── docs/               Architecture & API documentation
+│   ├── android/        Modular Compose host with FlexBuffers support
+│   └── ios/            SwiftUI host with MessagePack & Native Reflection
+├── sdk/                Kotlin SDK (WasmGC Bindings, Binary MessagePack Encoder)
+└── samples/            Reference apps (Netflix Clone, Navigation Demo)
 ```
 
-## Quick Start
+## 🚀 Getting Started
 
-### 1. Run the CLI Dev Server
+### 1. Build the Platform
 ```bash
+# Compile the shared logic engine and the CLI tool
 cd cli
-cargo run -- start --project ../samples/hello-world
+cargo build --release
 ```
 
-### 2. Connect the Host App
-- **Android Emulator**: connects to `ws://10.0.2.2:8080/ws`
-- **iOS Simulator**: connects to `ws://127.0.0.1:8080/ws`
+### 2. Create a New Project
+```bash
+feather-cli init --name my-app
+cd my-app
+```
 
-### 3. Edit & Watch
-Modify `samples/hello-world/src/.../App.kt` — the host app updates instantly.
+### 3. Start the Dev Server
+```bash
+feather-cli start
+```
+Connect your Android or iOS host shell by scanning the QR code in the terminal.
 
-## CLI Commands
+---
+
+## 💎 CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `feather start` | Start the dev server with file watching |
-| `feather init <name>` | Scaffold a new Feather project |
-| `feather install <module>` | Install a native module |
-| `feather doctor` | Check project configuration |
-| `feather modules` | List installed modules |
-| `feather upgrade` | Bump SDK and module versions |
+| `start` | Starts dev server with instant hot-reload. |
+| `build` | Generates an **optimized production bundle** (.fxb/.mp). |
+| `doctor` | Validates environment and binary protocol support. |
+| `install` | Adds a shared module (Camera, Maps, etc.) to the project. |
 
-## SDK 1.0 Widgets
+---
 
-| Widget | Description |
-|--------|-------------|
-| `Text` | Static text |
-| `StateText` | Reactive text from CLI state |
-| `Button` | Native button with action event |
-| `TextInput` | Native text field with change events |
-| `Image` | Remote or local image |
-| `Spacer` | Flexible empty space |
-| `Column` | Vertical layout container |
-| `Row` | Horizontal layout container |
+## 🎥 Ecosystem (Phase 2)
 
-## Native Modules
+Feather provides a rich set of native modules out of the box, all optimized for the binary protocol:
 
-Feather supports custom native modules that extend the Host app with platform-specific widgets. See [docs/modules.md](docs/modules.md) for the full creation guide.
+- **Camera**: High-performance preview and capture (CameraX / AVFoundation).
+- **Maps**: Native map integration (Google Maps / MapKit).
+- **Native Bridge**: Automatic access to any platform API via `Native.call()`.
+- **Event Bus**: Reactive native-to-wasm notifications (Lifecycle, Sensors, etc.).
 
-```bash
-feather install feather-camera
-```
+---
 
-## Documentation
+## 📖 Documentation
 
-- [Protocol](docs/protocol.md) — WebSocket render & action protocol
-- [SDK 1.0](docs/sdk-1.0.md) — Widget API and runtime contract
-- [Bundler v0](docs/bundler-v0.md) — Bundle format and manifest
-- [Modules](docs/modules.md) — Creating native modules
+- [Roadmap 2.0](ROADMAP.md) — The path to production readiness.
+- [Long-term Architecture](docs/long-term-path.md) — Why Kotlin/Wasm?
+- [Platform Contract](docs/platform-contract.md) — Shared runtime rules.
+- [Modules](docs/modules.md) — Scaling with the Bridge Factory.
 
 # feather

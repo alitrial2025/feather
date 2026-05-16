@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 
 // ─── Project Config ───────────────────────────────────────────────────────────
@@ -15,6 +16,29 @@ pub struct FeatherManifest {
     pub sdk_version: Option<String>,
     pub modules: Option<HashMap<String, String>>,
     pub dependencies: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub metadata: AppMetadataConfig,
+    #[serde(default)]
+    pub deep_links: Vec<DeepLinkConfig>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub platform_overrides: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct AppMetadataConfig {
+    pub app_id: Option<String>,
+    pub version_name: Option<String>,
+    pub version_code: Option<u32>,
+    pub display_name: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct DeepLinkConfig {
+    pub scheme: String,
+    pub host: Option<String>,
+    pub path_prefix: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -51,9 +75,10 @@ pub struct Diagnostic {
 
 // ─── Style ────────────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WidgetStyle {
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,6 +196,24 @@ pub struct WidgetStyle {
     pub secure: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub animations: Option<Vec<FeatherAnimation>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FeatherAnimation {
+    pub property: String,
+    pub duration: u32,
+    pub delay: u32,
+    pub easing: String,
+    pub iterations: i32,
+    pub keyframes: Vec<FeatherKeyframe>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FeatherKeyframe {
+    pub offset: f32,
+    pub value: f32,
 }
 
 impl WidgetStyle {
@@ -227,6 +270,7 @@ impl WidgetStyle {
             && self.multiline.is_none()
             && self.secure.is_none()
             && self.direction.is_none()
+            && self.animations.is_none()
     }
 }
 
@@ -236,7 +280,7 @@ pub fn skip_empty_style(style: &Option<WidgetStyle>) -> bool {
 
 // ─── Widget Node Tree ─────────────────────────────────────────────────────────
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
 #[allow(dead_code)]
 pub enum WidgetNode {
@@ -686,11 +730,20 @@ pub enum WidgetNode {
         #[serde(skip_serializing_if = "skip_empty_style")]
         style: Option<WidgetStyle>,
     },
+
+    // ── Custom ──
+    CustomNode {
+        module: String,
+        name: String,
+        props: Value,
+        #[serde(skip_serializing_if = "skip_empty_style")]
+        style: Option<WidgetStyle>,
+    },
 }
 
 // ─── Supporting Types ─────────────────────────────────────────────────────────
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RadioOption {
     pub value: String,
     pub label: String,
@@ -698,14 +751,14 @@ pub struct RadioOption {
     pub color: Option<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TabItemData {
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DrawerItemData {
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -716,7 +769,7 @@ pub struct DrawerItemData {
     pub action: Option<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[allow(dead_code)]
 pub struct SnackbarData {
     pub message: String,
@@ -728,4 +781,3 @@ pub struct SnackbarData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<u32>,
 }
-

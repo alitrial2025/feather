@@ -29,9 +29,16 @@
     - Removed all hardcoded legacy command handling from `MainActivity.kt`.
     - Unified the host logic: all commands (legacy string and new JSON) now pass through the `ModuleRegistry` and its corresponding modules.
 
-## Current Focus: Phase 2 - Core As Truth
+## Phase 1.5 - The High-Performance Pivot (In Progress)
+
+- **WasmGC Engine Maturity:** Completed support for advanced instructions and automatic type discovery.
+- **Binary Bridge:** MessagePack integration complete, reducing host-core communication latency.
+- **Symbolic Parser:** Successfully integrated `tree-sitter-kotlin` as a bridge towards a formal compiler frontend.
+- **Strategic Decision:** Initiating the development of **Feather UI Language (FUI)** and a **Binary Protocol** (FlatBuffers) to achieve production-grade performance and sub-100ms developer hot-reloads.
+
+## Current Focus: Compiler Frontend & Binary Protocol
 
 Next priorities:
-1.  Enable Android host to instantiate its own local `AppRuntime` (Phase 2).
-2.  Implement third-party module loading in the Android host.
-3.  Align iOS host with the new module call and diagnostics contract.
+1.  Prototype the Feather UI (.fthr) grammar using `pest`.
+2.  Design the FlatBuffers schema for the core rendering IR.
+3.  Expand Android/iOS hosts to support zero-copy binary IR loading.

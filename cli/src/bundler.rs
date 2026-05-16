@@ -1,14 +1,21 @@
 use crate::config::DevServerConfig;
 use crate::constants::{ASSET_EXTENSIONS, FEATHER_SDK_VERSION};
 use crate::models::{Diagnostic, RenderMessage, WidgetNode};
-use crate::parser::extract_widgets;
-use feather_core::{
-    artifact_for, discover_modules, with_delta, AppRuntime, BundleArtifact, BundleBuild,
-    BundleDelta, BundleManifest,
+use crate::symbolic_parser::SymbolicParser;
+use crate::fui_parser::parse_fui;
+use crate::optimizer::UiOptimizer;
+use feather_core::bundle::{
+    artifact_for, discover_modules, read_previous_manifest, with_delta, AppMetadata, BundleArtifact,
+    BundleBuild, BundleDelta, BundleManifest, DeepLink,
 };
+use feather_core::AppRuntime;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -43,13 +50,26 @@ fn fallback_render_document(config: &DevServerConfig, runtime: &Arc<AppRuntime>)
     }
 
     let (root, diagnostics) = match fs::read_to_string(&config.entry_path) {
-        Ok(source) => (
-            WidgetNode::Column {
-                children: extract_widgets(&source, Arc::clone(runtime), config.entry_path.parent()),
-                style: None,
-            },
-            Vec::new(),
-        ),
+        Ok(source) => {
+            if config.entry_path.extension().map_or(false, |ext| ext == "fthr") {
+                match parse_fui(&source) {
+                    Ok(fui) => (fui.root, Vec::new()),
+                    Err(e) => (
+                        WidgetNode::Text { text: format!("FUI Error: {e}"), style: None },
+                        vec![Diagnostic { level: "error", message: e }]
+                    )
+                }
+            } else {
+                let mut parser = SymbolicParser::new(&source, Arc::clone(runtime));
+                (
+                    WidgetNode::Column {
+                        children: parser.parse_widgets(),
+                        style: None,
+                    },
+                    Vec::new(),
+                )
+            }
+        }
         Err(error) => (
             WidgetNode::Text {
                 text: format!("Could not read app entry: {error}"),
@@ -98,6 +118,40 @@ pub fn build_bundle(
     fs::write(&render_path, &render_payload)
         .map_err(|error| format!("Could not write render artifact: {error}"))?;
 
+    // Phase 1.5: FlexBuffers Binary Protocol (Zero-Copy)
+    if let Ok(value) = serde_json::from_str::<Value>(&render_payload) {
+        if let Ok(root_node) = serde_json::from_value::<WidgetNode>(value.get("root").cloned().unwrap_or(Value::Null)) {
+            // Prepare state map for optimization
+            let mut state_map = HashMap::new();
+            if let Some(Value::Object(map)) = value.get("state") {
+                for (k, v) in map {
+                    state_map.insert(k.clone(), v.as_str().unwrap_or(&v.to_string()).to_string());
+                }
+            }
+
+            // Apply AOT Optimizations
+            let optimized_node = UiOptimizer::optimize(root_node, &mut state_map);
+            
+            // FlexBuffers (Android/Rust)
+            let mut s = flexbuffers::FlexbufferSerializer::new();
+            if optimized_node.serialize(&mut s).is_ok() {
+                fs::write(config.bundle_path.join("app.feather.fxb"), s.view())
+                    .map_err(|error| format!("Could not write FlexBuffers artifact: {error}"))?;
+            }
+            
+            // MessagePack (iOS fallback/parity)
+            if let Ok(mp_bytes) = rmp_serde::to_vec(&optimized_node) {
+                fs::write(config.bundle_path.join("app.feather.mp"), &mp_bytes)
+                    .map_err(|error| format!("Could not write MessagePack artifact: {error}"))?;
+            }
+        }
+    }
+
+    // Phase 18: Gzip compression
+    let compressed_render = compress_bytes(render_payload.as_bytes())?;
+    fs::write(config.bundle_path.join("app.feather.json.gz"), &compressed_render)
+        .map_err(|error| format!("Could not write compressed render artifact: {error}"))?;
+
     let modules_payload = "[]\n";
     fs::write(config.bundle_path.join("modules.json"), modules_payload)
         .map_err(|error| format!("Could not write modules artifact: {error}"))?;
@@ -105,7 +159,7 @@ pub fn build_bundle(
     let render_artifact = artifact_for("app.feather.json", render_payload.as_bytes());
     let dependencies = discover_dependencies(config)?;
     let assets = copy_assets(config)?;
-    copy_wasm_artifact(config)?;
+    let wasm = copy_wasm_artifact(config)?;
     let modules = discover_modules(&render_payload);
     let previous_manifest = read_previous_manifest(&config.bundle_path.join("manifest.json"));
     let manifest = BundleManifest {
@@ -119,13 +173,32 @@ pub fn build_bundle(
         sdk_version: FEATHER_SDK_VERSION.to_string(),
         protocol_version: 1,
         render: render_artifact,
+        wasm,
         assets,
+        fonts: Vec::new(),
         modules,
         dependencies,
         delta: BundleDelta {
             changed: Vec::new(),
             removed: Vec::new(),
         },
+        metadata: AppMetadata {
+            app_id: config.manifest.metadata.app_id.clone(),
+            version_name: config.manifest.metadata.version_name.clone(),
+            version_code: config.manifest.metadata.version_code,
+            display_name: config.manifest.metadata.display_name.clone(),
+        },
+        deep_links: config
+            .manifest
+            .deep_links
+            .iter()
+            .map(|dl| DeepLink {
+                scheme: dl.scheme.clone(),
+                host: dl.host.clone(),
+                path_prefix: dl.path_prefix.clone(),
+            })
+            .collect(),
+        platform_overrides: config.manifest.platform_overrides.clone(),
     };
     let manifest = with_delta(manifest, previous_manifest);
 
@@ -140,16 +213,29 @@ pub fn build_bundle(
     })
 }
 
-fn copy_wasm_artifact(config: &DevServerConfig) -> Result<(), String> {
+fn compress_bytes(data: &[u8]) -> Result<Vec<u8>, String> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data).map_err(|e| e.to_string())?;
+    encoder.finish().map_err(|e| e.to_string())
+}
+
+fn copy_wasm_artifact(config: &DevServerConfig) -> Result<Option<BundleArtifact>, String> {
     let wasm_path = config.project_path.join(".feather").join("app.wasm");
     if !wasm_path.exists() {
-        return Ok(());
+        return Ok(None);
     }
 
     let bytes = fs::read(&wasm_path)
         .map_err(|error| format!("Could not read WASM artifact {}: {error}", wasm_path.display()))?;
     write_if_changed(&config.bundle_path.join("app.wasm"), &bytes)
-        .map_err(|error| format!("Could not write WASM artifact: {error}"))
+        .map_err(|error| format!("Could not write WASM artifact: {error}"))?;
+    
+    // Compressed WASM
+    let compressed = compress_bytes(&bytes)?;
+    fs::write(config.bundle_path.join("app.wasm.gz"), &compressed)
+        .map_err(|error| format!("Could not write compressed WASM artifact: {error}"))?;
+        
+    Ok(Some(artifact_for("app.wasm", &bytes)))
 }
 
 fn discover_dependencies(config: &DevServerConfig) -> Result<Vec<BundleArtifact>, String> {
@@ -268,11 +354,6 @@ fn write_if_changed(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     }
 
     fs::write(path, bytes)
-}
-
-fn read_previous_manifest(path: &Path) -> Option<BundleManifest> {
-    let source = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&source).ok()
 }
 
 fn load_render_payload(

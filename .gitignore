@@ -1,37 +1,21 @@
-# Rust
-/target/
-/cli/target/
-/core/target/
-**/*.rs.bk
-Cargo.lock
-
-# Gradle / Android
-.gradle/
+# Gradle
 build/
-**/build/
-captures/
-*.apk
-*.aar
-*.jks
-*.keystore
-local.properties
-.navigation/
-assetpack/
-**/google-services.json
+.gradle/
+
+# Rust
+target/
 
 # IDEs
 .idea/
 .vscode/
-*.iml
 *.swp
 *.swo
-.DS_Store
-
-# Feather Artifacts
-.feather/app.wasm
-.feather/app.feather.json
-build/native/
 
 # OS
+.DS_Store
 Thumbs.db
-desktop.ini
+
+# Feather temp/build
+**/dist/
+**/.feather/
+java_pid*.hprof

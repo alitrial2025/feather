@@ -5,6 +5,9 @@ mod config;
 mod constants;
 mod models;
 mod parser;
+mod symbolic_parser;
+mod fui_parser;
+mod optimizer;
 mod server;
 
 use clap::Parser;
@@ -16,8 +19,8 @@ use server::run_server;
 async fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Start { project, host, port } => {
-            let config = match DevServerConfig::new(project, host, port) {
+        Commands::Start { project, host, port, tunnel } => {
+            let config = match DevServerConfig::new(project, host, port, tunnel) {
                 Ok(config) => config,
                 Err(error) => {
                     eprintln!("{error}");
@@ -26,10 +29,11 @@ async fn main() {
             };
             run_server(config).await;
         }
-        Commands::Install { project, module } => commands::install_module(project, module).await,
+        Commands::Install { project, module } => commands::install_module(project, module, "latest".to_string()).await,
+        Commands::Uninstall { project, module } => commands::uninstall_module(project, module).await,
         Commands::Doctor { project } => commands::doctor(project).await,
         Commands::Modules { project } => commands::list_modules(project).await,
-        Commands::Upgrade { project } => commands::upgrade_modules(project).await,
+        Commands::Update { project } => commands::upgrade_modules(project).await,
         Commands::Init { name } => commands::init_project(name).await,
         Commands::Build { project, target } => commands::build_production(project, target).await,
         Commands::CompileWasm { project } => commands::compile_wasm(project).await,

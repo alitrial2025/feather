@@ -137,12 +137,29 @@ struct DrawerItemData {
     let action: String?
 }
 
+// MARK: - Animation Data
+
+struct FeatherAnimation {
+    let property: String
+    let duration: Int
+    let delay: Int
+    let easing: String
+    let iterations: Int
+    let keyframes: [FeatherKeyframe]
+}
+
+struct FeatherKeyframe {
+    let offset: Float
+    let value: Float
+}
+
 // MARK: - Bundle Manifest (Codable for HTTP fetch)
 
 struct BundleManifest: Decodable {
     let sdkVersion: String
     let protocolVersion: Int
     let render: BundleArtifact
+    let wasm: BundleArtifact?
     let assets: [BundleArtifact]?
     let modules: [BundleModuleEntry]?
     let delta: BundleDelta?
@@ -151,6 +168,7 @@ struct BundleManifest: Decodable {
         case sdkVersion = "sdk_version"
         case protocolVersion = "protocol_version"
         case render
+        case wasm
         case assets
         case modules
         case delta
@@ -166,6 +184,15 @@ struct BundleArtifact: Decodable {
 struct BundleModuleEntry: Decodable {
     let name: String
     let version: String
+    let platforms: [String]?
+    let permissions: [String]?
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case version
+        case platforms = "modulePlatforms"
+        case permissions = "modulePermissions"
+    }
 }
 
 struct BundleDelta: Decodable {
@@ -189,6 +216,14 @@ enum FeatherRenderPayload {
             }
         }
         return (parseNode(root), errors)
+    }
+
+    static func decodeMessagePack(_ data: Data) -> (FeatherNode, [String]) {
+        guard let dict = MessagePackDecoder.decode(data) as? [String: Any],
+              let root = dict["root"] as? [String: Any] else {
+            return (.text(id: UUID().uuidString, text: "Invalid MessagePack payload"), [])
+        }
+        return (parseNode(root), [])
     }
 
     static func parseNode(_ dict: [String: Any]) -> FeatherNode {

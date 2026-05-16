@@ -17,7 +17,8 @@ This file maps the current codebase against the platform contract in `docs/platf
 - `NativeModule` and `NativeCallback` traits exist.
 - Module registration exists through `register_module`.
 - WASM host function `call_module` exists.
-- Bundle manifest and module discovery exist.
+- Bundle manifest and module discovery (with platforms and permissions) exist.
+- Diagnostic buffering and missing-module/unsupported-platform capability checks are implemented.
 
 ### CLI
 
@@ -27,33 +28,28 @@ This file maps the current codebase against the platform contract in `docs/platf
 - Module discovery from render JSON exists.
 - `feather install` writes `feather.json` and `feather.lock`.
 
-### Android Host
+### Host Structure (Android & iOS)
 
-- Native Compose renderer exists.
-- Dev-server WebSocket client exists.
+- Native rendering engines (Compose and SwiftUI) exist.
+- Dev-server WebSocket client exists on both platforms.
 - Bundle manifest/artifact fetch exists.
-- Network `GET`, `POST`, `PUT`, `DELETE` host commands exist.
-- SharedPreferences storage commands exist.
-- Media3 video rendering exists.
-- Audio player rendering has started.
-- WebView rendering has started.
+- Both platforms instantiate the Rust `AppRuntime` and route state/actions through it.
+- Both platforms have a `ModuleRegistry` and `FeatherModule` interface/protocol.
+- Official modules (Network, Storage, Navigation, Media, WebView, Device) are registered and act as targets for structured module calls or legacy string commands.
+- Lifecycle hooks (initialize, start, stop, destroy, etc.) are implemented and wired up.
+- Diagnostic overlays exist and display missing module/platform errors discovered via the bundle manifest.
 
 ## Major Gaps
 
 ### Contract Drift
 
 - SDK module APIs currently return raw string commands.
-- Android host parses `host:` string commands directly.
-- Core has a real module bridge, but Android host does not use it yet.
-- CLI/core/host do not enforce a single structured module-call schema yet.
+- CLI/core/host do not enforce a single structured module-call schema end-to-end for all features yet.
 
-### Module Registry
+### Module Capabilities
 
-- Android now has a first-pass `ModuleRegistry` and `FeatherModule` interface.
-- `feather-network` and `feather-storage` have first-pass Android implementations.
-- `feather-media` and `feather-webview` have first-pass Android render modules.
-- Third-party module registration is documented but not implemented end to end.
-- Missing-module diagnostics are not enforced before render.
+- The official modules (`feather-network`, `feather-storage`, `feather-media`, `feather-webview`, etc.) are registered but need their implementations fleshed out with full capabilities (e.g., HTTP POST, JSON bodies, advanced playback controls).
+- Third-party module registration is documented but not fully automated via the CLI end-to-end.
 
 ### Compiler
 
@@ -66,23 +62,15 @@ This file maps the current codebase against the platform contract in `docs/platf
 ### CLI
 
 - `feather install` does not resolve real module metadata.
-- `feather doctor` does not validate host/module compatibility.
-- Bundle manifest does not include permission requirements.
+- `feather doctor` does not fully validate host/module compatibility against the manifest.
 - Production build path is still skeletal.
-
-### Host Structure
-
-- Android host is too concentrated in `MainActivity.kt`.
-- Renderer, parsing, style mapping, modules, and dev-client code need separation.
-- iOS parity still needs to be checked or built.
 
 ## Priority Order
 
-1. Teach Android host to report missing module diagnostics.
-2. Add SDK structured request models while keeping legacy string commands.
-3. Update CLI `doctor` to check declared modules against known official modules.
-4. Expand bundle manifest with permissions.
-5. Start compiler/KSP cleanup once module boundaries are stable.
+1. Flesh out implementations for Core Official Modules (`feather-network`, `feather-storage`, `feather-media`, `feather-webview`, `feather-camera`).
+2. Add SDK structured request models while phasing out legacy string commands.
+3. Update CLI `doctor` to check declared modules against known official modules and permissions.
+4. Start compiler/KSP cleanup once module boundaries are stable.
 
 ## Rule For New Features
 

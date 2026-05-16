@@ -17,6 +17,7 @@ struct FeatherStyle {
     var gradient: String?; var clip: Bool?; var shadow: String?
     var position: String?; var top: CGFloat?; var bottom: CGFloat?; var left: CGFloat?; var right: CGFloat?
     var zIndex: Double?
+    var animations: [FeatherAnimation]?
 
     static func parse(from dict: [String: Any]?) -> FeatherStyle? {
         guard let d = dict, !d.isEmpty else { return nil }
@@ -28,7 +29,7 @@ struct FeatherStyle {
             "maxHeight", "alignment", "spacing", "opacity", "textColor", "placeholderColor",
             "contentMode", "maxLines", "elevation", "fillMaxWidth", "fillMaxHeight",
             "aspectRatio", "gradient", "clip", "shadow", "position", "top", "bottom",
-            "left", "right", "zIndex"
+            "left", "right", "zIndex", "animations"
         ]
         guard d.keys.contains(where: { styleKeys.contains($0) }) else { return nil }
         var s = FeatherStyle()
@@ -71,6 +72,32 @@ struct FeatherStyle {
         s.left = (d["left"] as? NSNumber)?.cgFloatValue
         s.right = (d["right"] as? NSNumber)?.cgFloatValue
         s.zIndex = (d["zIndex"] as? NSNumber)?.doubleValue
+        
+        if let animsArray = d["animations"] as? [[String: Any]] {
+            s.animations = animsArray.map { animJson in
+                let property = animJson["property"] as? String ?? ""
+                let duration = (animJson["duration"] as? NSNumber)?.intValue ?? 300
+                let delay = (animJson["delay"] as? NSNumber)?.intValue ?? 0
+                let easing = animJson["easing"] as? String ?? "linear"
+                let iterations = (animJson["iterations"] as? NSNumber)?.intValue ?? 1
+                let kfsArray = animJson["keyframes"] as? [[String: Any]] ?? []
+                let keyframes = kfsArray.map { kfDict in
+                    FeatherKeyframe(
+                        offset: (kfDict["offset"] as? NSNumber)?.floatValue ?? 0,
+                        value: (kfDict["value"] as? NSNumber)?.floatValue ?? 0
+                    )
+                }
+                return FeatherAnimation(
+                    property: property,
+                    duration: duration,
+                    delay: delay,
+                    easing: easing,
+                    iterations: iterations,
+                    keyframes: keyframes
+                )
+            }
+        }
+        
         return s
     }
 
@@ -99,12 +126,90 @@ struct FeatherStyle {
 
 private extension NSNumber { var cgFloatValue: CGFloat { CGFloat(doubleValue) } }
 
+// MARK: - Animation Modifier
+
+struct FeatherAnimationModifier: ViewModifier {
+    let animations: [FeatherAnimation]?
+    @State private var startTimestamp: Date?
+
+    func body(content: Content) -> some View {
+        if let anims = animations, !anims.isEmpty {
+            TimelineView(.animation) { context in
+                let now = context.date
+                let elapsed = now.timeIntervalSince(startTimestamp ?? now)
+                
+                content
+                    .modifier(FeatherKeyframeApplier(animations: anims, elapsed: elapsed))
+                    .onAppear { if startTimestamp == nil { startTimestamp = now } }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+struct FeatherKeyframeApplier: ViewModifier {
+    let animations: [FeatherAnimation]
+    let elapsed: TimeInterval
+
+    func body(content: Content) -> some View {
+        var result = AnyView(content)
+        for anim in animations {
+            let value = calculateValue(for: anim, elapsed: elapsed)
+            switch anim.property {
+            case "opacity": result = AnyView(result.opacity(Double(value)))
+            case "scale": result = AnyView(result.scaleEffect(CGFloat(value)))
+            case "rotation": result = AnyView(result.rotationEffect(.degrees(Double(value))))
+            case "translationX": result = AnyView(result.offset(x: CGFloat(value)))
+            case "translationY": result = AnyView(result.offset(y: CGFloat(value)))
+            default: break
+            }
+        }
+        return result
+    }
+
+    private func calculateValue(for anim: FeatherAnimation, elapsed: TimeInterval) -> Float {
+        let totalDuration = Double(anim.duration) / 1000.0
+        let delay = Double(anim.delay) / 1000.0
+        
+        if elapsed < delay { return anim.keyframes.first?.value ?? 0 }
+        
+        let activeElapsed = elapsed - delay
+        let progress: Double
+        if anim.iterations == -1 {
+            progress = (activeElapsed.truncatingRemainder(dividingBy: totalDuration)) / totalDuration
+        } else if activeElapsed >= (totalDuration * Double(anim.iterations)) {
+            return anim.keyframes.last?.value ?? 1.0
+        } else {
+            progress = (activeElapsed.truncatingRemainder(dividingBy: totalDuration)) / totalDuration
+        }
+        
+        let p = Float(progress)
+        guard let first = anim.keyframes.first else { return 0 }
+        if p <= first.offset { return first.value }
+        guard let last = anim.keyframes.last else { return 0 }
+        if p >= last.offset { return last.value }
+        
+        for i in 0..<(anim.keyframes.count - 1) {
+            let k1 = anim.keyframes[i]
+            let k2 = anim.keyframes[i+1]
+            if p >= k1.offset && p <= k2.offset {
+                let range = k2.offset - k1.offset
+                let localP = (p - k1.offset) / range
+                return k1.value + (k2.value - k1.value) * localP
+            }
+        }
+        return first.value
+    }
+}
+
 // MARK: - Style Modifier
 
 struct FeatherStyleModifier: ViewModifier {
     let style: FeatherStyle?
     func body(content: Content) -> some View {
         content
+            .modifier(FeatherAnimationModifier(animations: style?.animations))
             .ifLet(style?.margin) { v, m in v.padding(m) }
             .ifLet(style?.cornerRadius) { v, r in v.clipShape(RoundedRectangle(cornerRadius: r)) }
             .ifLet(style?.background) { v, bg in v.background(bg) }
@@ -129,12 +234,16 @@ extension View {
     @ViewBuilder func ifLet<T>(_ value: T?, transform: (Self, T) -> some View) -> some View {
         if let value = value { transform(self, value) } else { self }
     }
+    @ViewBuilder func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {
+        if condition { transform(self) } else { self }
+    }
 }
 
 // MARK: - DynamicView (50+ widget renderer)
 
 struct DynamicView: View {
     let node: FeatherNode
+    let moduleRegistry: ModuleRegistry
     let onAction: (String, String?) -> Void
     @State private var textInputValue = ""
 
@@ -195,47 +304,47 @@ struct DynamicView: View {
         // ── Layouts ──
         case .column(_, let children, let style):
             VStack(alignment: hAlign(style?.alignment), spacing: style?.spacing ?? 8) {
-                ForEach(children) { c in DynamicView(node: c, onAction: onAction) }
+                ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }
             }.featherStyle(style)
 
         case .row(_, let children, let style):
             HStack(alignment: vAlign(style?.alignment), spacing: style?.spacing ?? 8) {
-                ForEach(children) { c in DynamicView(node: c, onAction: onAction) }
+                ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }
             }.featherStyle(style)
 
         case .box(_, let children, let style):
             ZStack(alignment: zAlign(style?.alignment)) {
-                ForEach(children) { c in DynamicView(node: c, onAction: onAction) }
+                ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }
             }.featherStyle(style)
 
         case .lazyColumn(_, let items, let style):
-            List { ForEach(items) { i in DynamicView(node: i, onAction: onAction).listRowInsets(EdgeInsets()).listRowBackground(Color.clear) } }
+            List { ForEach(items) { i in DynamicView(node: i, moduleRegistry: moduleRegistry, onAction: onAction).listRowInsets(EdgeInsets()).listRowBackground(Color.clear) } }
                 .listStyle(.plain).featherStyle(style)
 
         case .lazyRow(_, let items, let style):
-            ScrollView(.horizontal) { LazyHStack(spacing: style?.spacing ?? 8) { ForEach(items) { i in DynamicView(node: i, onAction: onAction) } } }.featherStyle(style)
+            ScrollView(.horizontal) { LazyHStack(spacing: style?.spacing ?? 8) { ForEach(items) { i in DynamicView(node: i, moduleRegistry: moduleRegistry, onAction: onAction) } } }.featherStyle(style)
 
         case .lazyGrid(_, let items, let columns, let style):
             let cols = Array(repeating: GridItem(.flexible()), count: columns)
-            ScrollView { LazyVGrid(columns: cols, spacing: style?.spacing ?? 8) { ForEach(items) { i in DynamicView(node: i, onAction: onAction) } } }.featherStyle(style)
+            ScrollView { LazyVGrid(columns: cols, spacing: style?.spacing ?? 8) { ForEach(items) { i in DynamicView(node: i, moduleRegistry: moduleRegistry, onAction: onAction) } } }.featherStyle(style)
 
         case .scrollView(_, let children, let direction, let style):
             ScrollView(direction == "horizontal" ? .horizontal : .vertical) {
-                let stack = VStack(spacing: style?.spacing ?? 8) { ForEach(children) { c in DynamicView(node: c, onAction: onAction) } }
+                let stack = VStack(spacing: style?.spacing ?? 8) { ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) } }
                 stack.featherStyle(style)
             }
 
         case .card(_, let children, let action, let style):
-            let content = VStack(alignment: .leading, spacing: style?.spacing ?? 8) { ForEach(children) { c in DynamicView(node: c, onAction: onAction) } }
+            let content = VStack(alignment: .leading, spacing: style?.spacing ?? 8) { ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) } }
                 .padding(style?.padding ?? 12).background(style?.background ?? Color(.systemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: style?.cornerRadius ?? 8)).shadow(radius: 2)
             if let action = action { Button(action: { onAction(action, nil) }) { content } } else { content }
 
         case .surface(_, let children, let style):
-            VStack { ForEach(children) { c in DynamicView(node: c, onAction: onAction) } }.featherStyle(style)
+            VStack { ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) } }.featherStyle(style)
 
         case .aspectRatio(_, let ratio, let child):
-            DynamicView(node: child, onAction: onAction).aspectRatio(CGFloat(ratio), contentMode: .fit)
+            DynamicView(node: child, moduleRegistry: moduleRegistry, onAction: onAction).aspectRatio(CGFloat(ratio), contentMode: .fit)
 
         // ── Interactive ──
         case .switchNode(_, let checked, let action, let enabled, let label, _):
@@ -271,14 +380,16 @@ struct DynamicView: View {
         // ── Feedback ──
         case .dialog(_, _, _, _, _, _, _, _): EmptyView() // Dialogs managed by state
         case .bottomSheet(_, let visible, let content, _, let style):
-            if visible { VStack { DynamicView(node: content, onAction: onAction) }.featherStyle(style) }
+            if visible { VStack { DynamicView(node: content, moduleRegistry: moduleRegistry, onAction: onAction) }.featherStyle(style) }
         case .snackbar(_, let message, let visible, let actionText, let action):
             if visible { HStack { Text(message).foregroundColor(.white); SwiftUI.Spacer(); if let at = actionText { Button(at) { if let a = action { onAction(a, nil) } }.foregroundColor(.yellow) } }.padding().background(Color(.darkGray)).cornerRadius(8).padding() }
         case .badge(_, let count, let color, let child):
-            ZStack(alignment: .topTrailing) { if let c = child { DynamicView(node: c, onAction: onAction) }; if count > 0 { Text(count > 99 ? "99+" : "\(count)").font(.caption2).foregroundColor(.white).padding(4).background(FeatherStyle.parseColor(color) ?? .red).clipShape(Circle()) } }
+            ZStack(alignment: .topTrailing) { if let c = child { DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }; if count > 0 { Text(count > 99 ? "99+" : "\(count)").font(.caption2).foregroundColor(.white).padding(4).background(FeatherStyle.parseColor(color) ?? .red).clipShape(Circle()) } }
+        case .badge(_, let count, let color, let child):
+            ZStack(alignment: .topTrailing) { if let c = child { DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }; if count > 0 { Text(count > 99 ? "99+" : "\(count)").font(.caption2).foregroundColor(.white).padding(4).background(FeatherStyle.parseColor(color) ?? .red).clipShape(Circle()) } }
         case .chip(_, let label, let selected, let action, _, let color):
             Button(action: { if let a = action { onAction(a, nil) } }) { Text(label).font(.footnote).padding(.horizontal, 12).padding(.vertical, 6).background((selected == true ? FeatherStyle.parseColor(color) ?? .blue : Color(.systemGray5))).foregroundColor(selected == true ? .white : .primary).clipShape(Capsule()) }
-        case .tooltip(_, _, let child): DynamicView(node: child, onAction: onAction)
+        case .tooltip(_, _, let child): DynamicView(node: child, moduleRegistry: moduleRegistry, onAction: onAction)
         case .floatingActionButton(_, let icon, let action, let background, let iconColor):
             Button(action: { onAction(action, nil) }) { Image(systemName: mapIconName(icon)).font(.title2).foregroundColor(FeatherStyle.parseColor(iconColor) ?? .white).padding().background(FeatherStyle.parseColor(background) ?? .blue).clipShape(Circle()).shadow(radius: 4) }
         case .placeholder(_, let width, let height, let cr):
@@ -286,41 +397,53 @@ struct DynamicView: View {
 
         // ── Scaffold ──
         case .scaffold(_, let topBar, _, _, _, let body, let style):
-            VStack(spacing: 0) { if let tb = topBar { DynamicView(node: tb, onAction: onAction) }; DynamicView(node: body, onAction: onAction).frame(maxWidth: .infinity, maxHeight: .infinity) }.featherStyle(style)
+            VStack(spacing: 0) { if let tb = topBar { DynamicView(node: tb, moduleRegistry: moduleRegistry, onAction: onAction) }; DynamicView(node: body, moduleRegistry: moduleRegistry, onAction: onAction).frame(maxWidth: .infinity, maxHeight: .infinity) }.featherStyle(style)
         case .topAppBar(_, let title, _, let navIcon, let navAction, let bg, let contentColor):
             HStack { if let ni = navIcon { Button(action: { if let a = navAction { onAction(a, nil) } }) { Image(systemName: mapIconName(ni)) } }; Text(title).font(.headline); SwiftUI.Spacer() }
                 .padding().background(FeatherStyle.parseColor(bg) ?? Color(.systemBackground)).foregroundColor(FeatherStyle.parseColor(contentColor) ?? .primary)
         case .bottomAppBar(_, let children, let bg, _):
-            HStack { ForEach(children) { c in DynamicView(node: c, onAction: onAction) } }.padding().background(FeatherStyle.parseColor(bg) ?? Color(.systemBackground))
+            HStack { ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) } }.padding().background(FeatherStyle.parseColor(bg) ?? Color(.systemBackground))
         case .tabRow(_, let tabs, let selected, let action, _, _):
             HStack { ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in Button(action: { onAction(action, "\(i)") }) { Text(t.title).fontWeight(i == selected ? .bold : .regular).padding(8) } } }
         case .pager(_, let pages, let currentPage, _, let style):
-            if let p = currentPage, p < pages.count { DynamicView(node: pages[p], onAction: onAction).featherStyle(style) }
+            if let p = currentPage, p < pages.count { DynamicView(node: pages[p], moduleRegistry: moduleRegistry, onAction: onAction).featherStyle(style) }
         case .drawer(_, let header, _, let style):
-            VStack(alignment: .leading) { if let h = header { DynamicView(node: h, onAction: onAction) } }.featherStyle(style)
+            VStack(alignment: .leading) { if let h = header { DynamicView(node: h, moduleRegistry: moduleRegistry, onAction: onAction) } }.featherStyle(style)
 
         // ── Navigation ──
         case .navigator(_, let initialRoute, let screens):
-            NavigatorView(initialRoute: initialRoute, screens: screens, onAction: onAction)
+            NavigatorView(initialRoute: initialRoute, screens: screens, moduleRegistry: moduleRegistry, onAction: onAction)
         case .bottomTabs(_, let tabs, let style):
-            TabView { ForEach(tabs) { t in DynamicView(node: t.content, onAction: onAction).tabItem { Label(t.title, systemImage: t.icon ?? "house") } } }.featherStyle(style)
-        case .tab(_, _, _, _, let content): DynamicView(node: content, onAction: onAction)
+            TabView { ForEach(tabs) { t in DynamicView(node: t.content, moduleRegistry: moduleRegistry, onAction: onAction).tabItem { Label(t.title, systemImage: t.icon ?? "house") } } }.featherStyle(style)
+        case .tab(_, _, _, _, let content): DynamicView(node: content, moduleRegistry: moduleRegistry, onAction: onAction)
 
         // ── Logic ──
         case .forEach(_, let itemsKey, _): Text("ForEach: \(itemsKey)").foregroundColor(.gray)
-        case .condition(_, _, let then, _): DynamicView(node: then, onAction: onAction)
+        case .condition(_, _, let then, _): DynamicView(node: then, moduleRegistry: moduleRegistry, onAction: onAction)
 
         // ── Media ──
-        case .videoPlayer(_, let src, _, _, _, _, let style):
-            ZStack { Color.black; Image(systemName: "play.fill").font(.largeTitle).foregroundColor(.white); Text(src.components(separatedBy: "/").last ?? "Video").foregroundColor(.white).font(.caption).offset(y: 30) }.featherStyle(style)
-        case .audioPlayer(_, let src, _, _, _, _):
-            HStack { Image(systemName: "play.circle.fill").font(.title).foregroundColor(.blue); Text(src.components(separatedBy: "/").last ?? "Audio").lineLimit(1); SwiftUI.Spacer() }.padding().background(Color(.systemGray6)).cornerRadius(8)
-        case .webView(_, let url, let style):
-            VStack { Text("WebView").font(.caption).foregroundColor(.gray); Text(url).font(.caption2).foregroundColor(.blue) }.padding().featherStyle(style)
+        case .videoPlayer(_, _, _, _, _, _, let style):
+            if let renderer = moduleRegistry.rendererFor(node) {
+                renderer.render(node: node, onAction: onAction).featherStyle(style)
+            } else {
+                Text("Missing module: feather-media").foregroundColor(.red).featherStyle(style)
+            }
+        case .audioPlayer(_, _, _, _, _, _):
+            if let renderer = moduleRegistry.rendererFor(node) {
+                renderer.render(node: node, onAction: onAction)
+            } else {
+                Text("Missing module: feather-media").foregroundColor(.red)
+            }
+        case .webView(_, _, let style):
+            if let renderer = moduleRegistry.rendererFor(node) {
+                renderer.render(node: node, onAction: onAction).featherStyle(style)
+            } else {
+                Text("Missing module: feather-web").foregroundColor(.red).featherStyle(style)
+            }
 
         // ── Gestures ──
         case .gestureDetector(_, let onTap, let onPan, let child):
-            DynamicView(node: child, onAction: onAction)
+            DynamicView(node: child, moduleRegistry: moduleRegistry, onAction: onAction)
                 .simultaneousGesture(
                     DragGesture()
                         .onChanged { val in
@@ -337,14 +460,19 @@ struct DynamicView: View {
                         }
                 )
         case .clickable(_, let action, let child, _):
-            Button(action: { onAction(action, nil) }) { DynamicView(node: child, onAction: onAction) }
+            Button(action: { onAction(action, nil) }) { DynamicView(node: child, moduleRegistry: moduleRegistry, onAction: onAction) }
         case .longPressable(_, let action, let child, _):
-            DynamicView(node: child, onAction: onAction).onLongPressGesture { onAction(action, nil) }
+            DynamicView(node: child, moduleRegistry: moduleRegistry, onAction: onAction).onLongPressGesture { onAction(action, nil) }
         case .pullToRefresh(_, _, let child, _):
-            DynamicView(node: child, onAction: onAction) // Real impl needs .refreshable
+            DynamicView(node: child, moduleRegistry: moduleRegistry, onAction: onAction) // Real impl needs .refreshable
 
         // ── Fallback ──
-        case .custom(_, let type, _): Text("Custom: \(type)").foregroundColor(.orange)
+        case .custom(_, let type, _):
+            if let renderer = moduleRegistry.rendererFor(node) {
+                renderer.render(node: node, onAction: onAction)
+            } else {
+                Text("Missing module for custom: \(type)").foregroundColor(.orange)
+            }
         case .unsupported(_, let type): Text("Unsupported: \(type)").foregroundColor(.red)
         }
     }
@@ -374,12 +502,12 @@ private func mapIconName(_ name: String) -> String {
 // MARK: - Navigation Helper
 
 struct NavigatorView: View {
-    let initialRoute: String; let screens: [String: FeatherNode]; let onAction: (String, String?) -> Void
+    let initialRoute: String; let screens: [String: FeatherNode]; let moduleRegistry: ModuleRegistry; let onAction: (String, String?) -> Void
     @State private var currentRoute = ""
     var body: some View {
         let route = currentRoute.isEmpty ? initialRoute : currentRoute
         let screen = screens[route] ?? screens.values.first ?? .unsupported(id: "err", type: "No screen")
-        DynamicView(node: screen) { action, payload in
+        DynamicView(node: screen, moduleRegistry: moduleRegistry) { action, payload in
             if action == "__navigate", let next = payload { currentRoute = next }
             else if action == "__goBack" { currentRoute = initialRoute }
             else { onAction(action, payload) }

@@ -52,8 +52,13 @@ class StorageModule : FeatherModule {
             "set" -> {
                 val key = payload.optString("key")
                 if (key.isNotBlank()) {
+                    val valueObj = payload.opt("value")
+                    val valueToSave = when (valueObj) {
+                        is org.json.JSONObject, is org.json.JSONArray -> valueObj.toString()
+                        else -> payload.optString("value")
+                    }
                     preferences.edit()
-                        .putString(key, payload.optString("value"))
+                        .putString(key, valueToSave)
                         .apply()
                 }
                 true
@@ -62,6 +67,9 @@ class StorageModule : FeatherModule {
                 val key = payload.optString("key")
                 if (key.isNotBlank()) {
                     val value = preferences.getString(key, "") ?: ""
+                    // If it's stored as JSON, we should just return the raw string and let the wrapper serialize it or return a JSON object.
+                    // To do it correctly, we send the raw string but let the JSON parser on the other end handle it.
+                    // Wait, sendStateAssignment assigns the string as the state value.
                     context.sendStateAssignment("", value) // key is ignored by wrapper if resultStateKey was provided
                 }
                 true

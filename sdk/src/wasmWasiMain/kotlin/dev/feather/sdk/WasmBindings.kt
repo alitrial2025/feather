@@ -1,13 +1,11 @@
 package dev.feather.sdk
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlin.wasm.unsafe.*
 
 // ─── WASM ↔ Rust Host Function Imports ────────────────────────────────────────
-//
-// These are the functions the Rust `wasmi` engine exposes to the WASM sandbox.
-// Kotlin/Wasm calls them to communicate with the native platform.
 
 /** Log a message to the Rust CLI terminal. */
 @WasmImport("env", "console_log")
@@ -21,6 +19,10 @@ internal external fun wasmUpdateState(keyPtr: Int, keyLen: Int, valPtr: Int, val
 @WasmImport("env", "set_render_tree")
 internal external fun wasmSetRenderTree(ptr: Int, len: Int)
 
+/** Push the full binary (MessagePack) UI tree to the Rust host for rendering. */
+@WasmImport("env", "set_render_tree_bin")
+internal external fun wasmSetRenderTreeBin(ptr: Int, len: Int)
+
 @WasmImport("env", "get_action_payload")
 internal external fun wasmGetActionPayload(ptr: Int): Int
 
@@ -32,33 +34,72 @@ internal external fun wasmFetchNetwork(urlPtr: Int, urlLen: Int, resultPtr: Int)
 @WasmImport("env", "get_state")
 internal external fun wasmGetState(keyPtr: Int, keyLen: Int, resultPtr: Int): Int
 
-/** Call a native module through the Rust host bridge (Phase 16). */
+@WasmImport("env", "msgpack_update_state")
+internal external fun wasmMsgpackUpdateState(ptr: Int, len: Int): Int
+
+@WasmImport("env", "msgpack_get_state")
+internal external fun wasmMsgpackGetState(keyPtr: Int, keyLen: Int, resultPtr: Int): Int
+
+@WasmImport("env", "msgpack_call_module")
+internal external fun wasmMsgpackCallModule(ptr: Int, len: Int): Int
+
+@WasmImport("env", "drain_native_events")
+internal external fun wasmDrainNativeEvents(resultPtr: Int): Int
+
+/** Call a native module through the Rust host bridge. */
 @WasmImport("env", "call_module")
 internal external fun wasmCallModule(
     namePtr: Int, nameLen: Int, 
-    actionPtr: Int, actionLen: Int, 
+    actionPtr: Int, action_len: Int, 
     payloadPtr: Int, payloadLen: Int,
     cbKeyPtr: Int, cbKeyLen: Int
 ): Int
 
-// ─── Memory Helpers ──────────────────────────────────────────────────────────
-// Memory management is now handled via Memory.kt (withWasmString)
-
 // ─── Public SDK Helpers ──────────────────────────────────────────────────────
 
-/** Log a message to the Feather CLI console. */
 fun console(message: String) {
     withWasmString(message) { ptr, len ->
         wasmConsoleLog(ptr, len)
     }
 }
 
-/** Update a state key in the shared runtime. Triggers a re-render. */
 fun setState(key: String, value: String) {
     withWasmString(key) { keyPtr, keyLen ->
         withWasmString(value) { valPtr, valLen ->
             wasmUpdateState(keyPtr, keyLen, valPtr, valLen)
         }
+    }
+}
+
+@OptIn(UnsafeWasmMemoryApi::class)
+fun setStates(updates: Map<String, Any?>) {
+    val encoder = MessagePackEncoder()
+    val bytes = encoder.encode(updates)
+    withScopedMemoryAllocator { allocator ->
+        val ptr = allocator.allocate(bytes.size)
+        for (i in bytes.indices) {
+            Pointer((ptr.address.toUInt() + i.toUInt())).storeByte(bytes[i])
+        }
+        wasmMsgpackUpdateState(ptr.address.toInt(), bytes.size)
+    }
+}
+
+@OptIn(UnsafeWasmMemoryApi::class)
+fun callModuleMsgpack(module: String, method: String, payload: Any? = null, stateKey: String) {
+    val encoder = MessagePackEncoder()
+    val callData = mapOf(
+        "module" to module,
+        "method" to method,
+        "payload" to payload,
+        "resultStateKey" to stateKey
+    )
+    val bytes = encoder.encode(callData)
+    withScopedMemoryAllocator { allocator ->
+        val ptr = allocator.allocate(bytes.size)
+        for (i in bytes.indices) {
+            Pointer((ptr.address.toUInt() + i.toUInt())).storeByte(bytes[i])
+        }
+        wasmMsgpackCallModule(ptr.address.toInt(), bytes.size)
     }
 }
 
@@ -72,7 +113,7 @@ fun getState(key: String): String? {
             if (len > 0) {
                 val bytes = ByteArray(len)
                 for (i in 0 until len) {
-                    bytes[i] = Pointer.loadByte(Pointer(resultPtr.address.toInt() + i))
+                    bytes[i] = Pointer((resultPtr.address.toUInt() + i.toUInt())).loadByte()
                 }
                 result = bytes.decodeToString()
             }
@@ -86,12 +127,12 @@ fun fetchNetwork(url: String): String {
     var response = ""
     withWasmString(url) { urlPtr, urlLen ->
         withScopedMemoryAllocator { allocator ->
-            val resultPtr = allocator.allocate(1024 * 1024 * 5) // 5MB buffer
+            val resultPtr = allocator.allocate(1024 * 1024 * 5)
             val len = wasmFetchNetwork(urlPtr, urlLen, resultPtr.address.toInt())
             if (len > 0) {
                 val bytes = ByteArray(len)
                 for (i in 0 until len) {
-                    bytes[i] = Pointer.loadByte(Pointer(resultPtr.address.toInt() + i))
+                    bytes[i] = Pointer((resultPtr.address.toUInt() + i.toUInt())).loadByte()
                 }
                 response = bytes.decodeToString()
             }
@@ -100,7 +141,6 @@ fun fetchNetwork(url: String): String {
     return response
 }
 
-/** Call a native module and store the result in a state key. */
 fun callModule(moduleName: String, action: String, payload: String = "{}", stateKey: String) {
     withWasmString(moduleName) { namePtr, nameLen ->
         withWasmString(action) { actPtr, actLen ->
@@ -113,16 +153,10 @@ fun callModule(moduleName: String, action: String, payload: String = "{}", state
     }
 }
 
-// ─── WASM Exports (called BY the Rust host) ──────────────────────────────────
+// ─── WASM Exports ───────────────────────────────────────────────────────────
 
-/** Global app instance. Set by the user's main() function. */
 var featherApp: FeatherApp? = null
 
-/**
- * Called by the Rust host to render the current UI.
- * Executes the app's render() function, serializes the Widget tree to JSON,
- * and pushes it to the host via set_render_tree.
- */
 @WasmExport
 fun render_ui() {
     val app = featherApp ?: return
@@ -133,23 +167,48 @@ fun render_ui() {
     }
 }
 
-/**
- * Called by the Rust host when a user interaction occurs (button tap, input change, etc).
- * Routes the action string to the app's handleAction method.
- */
+@OptIn(UnsafeWasmMemoryApi::class)
+@WasmExport
+fun render_ui_bin() {
+    val app = featherApp ?: return
+    val root = app.render()
+    val encoder = MessagePackEncoder()
+    val bytes = encoder.encode(root)
+    withScopedMemoryAllocator { allocator ->
+        val ptr = allocator.allocate(bytes.size)
+        for (i in bytes.indices) {
+            Pointer((ptr.address.toUInt() + i.toUInt())).storeByte(bytes[i])
+        }
+        wasmSetRenderTreeBin(ptr.address.toInt(), bytes.size)
+    }
+}
+
 @OptIn(UnsafeWasmMemoryApi::class)
 @WasmExport
 fun handle_action() {
     withScopedMemoryAllocator { allocator ->
-        val ptr = allocator.allocate(1024 * 128) // 128KB buffer for payload
+        val ptr = allocator.allocate(1024 * 128)
         val len = wasmGetActionPayload(ptr.address.toInt())
         if (len > 0) {
             val bytes = ByteArray(len)
             for (i in 0 until len) {
-                bytes[i] = Pointer.loadByte(Pointer(ptr.address.toInt() + i))
+                bytes[i] = Pointer((ptr.address.toUInt() + i.toUInt())).loadByte()
             }
             val actionStr = bytes.decodeToString()
             featherApp?.handleAction(actionStr, null)
+        }
+    }
+
+    // Process Async Events
+    withScopedMemoryAllocator { allocator ->
+        val resultPtr = allocator.allocate(1024 * 256)
+        val len = wasmDrainNativeEvents(resultPtr.address.toInt())
+        if (len > 0) {
+            val bytes = ByteArray(len)
+            for (i in 0 until len) {
+                bytes[i] = Pointer((resultPtr.address.toUInt() + i.toUInt())).loadByte()
+            }
+            Event.dispatchInternal(bytes)
         }
     }
 }

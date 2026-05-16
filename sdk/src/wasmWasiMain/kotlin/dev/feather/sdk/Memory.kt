@@ -13,8 +13,8 @@ internal fun withWasmString(string: String, block: (ptr: Int, len: Int) -> Unit)
         val ptr = allocator.allocate(bytes.size)
         // Copy bytes to linear memory
         for (i in bytes.indices) {
-            val bytePtr = Pointer(ptr.address.toInt() + i)
-            Pointer.storeByte(bytePtr, bytes[i])
+            val bytePtr = Pointer((ptr.address.toUInt() + i.toUInt()))
+            bytePtr.storeByte(bytes[i])
         }
         block(ptr.address.toInt(), bytes.size)
     }

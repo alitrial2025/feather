@@ -261,11 +261,10 @@ Bundles must describe the app and required runtime capabilities.
   "modules": [
     {
       "name": "feather-network",
-      "version": "1.0.0"
+      "version": "1.0.0",
+      "platforms": ["android", "ios"],
+      "permissions": ["network"]
     }
-  ],
-  "permissions": [
-    "network"
   ],
   "assets": [],
   "dependencies": [],
@@ -279,13 +278,14 @@ Bundles must describe the app and required runtime capabilities.
 Rules:
 
 - Hosts must validate `sdk_version` and `protocol_version`.
-- Hosts must validate module availability before rendering module nodes.
+- Hosts must validate module availability (including platform constraints) before rendering module nodes.
+- Hosts must surface missing module/platform diagnostics using the Core AppRuntime.
 - Production bundles must include checksums.
 - Future production bundles should be signed.
 
 ## Permissions
 
-Modules declare permissions in manifest metadata.
+Modules declare permissions in manifest metadata (under `modules[].permissions`).
 
 Examples:
 
@@ -304,7 +304,7 @@ Examples:
 Rules:
 
 - App code should not request platform permissions directly.
-- Modules request permissions through host permission routing.
+- Modules request permissions through host permission routing (via lifecycle hooks).
 - Missing permissions should produce diagnostics, not silent failure.
 
 ## Compatibility
@@ -340,7 +340,7 @@ Migration path:
 1. Keep existing string commands working.
 2. Add structured module request models.
 3. Teach core to handle structured requests.
-4. Move host implementations behind module registry.
+4. Move host implementations behind module registry. *(Completed for Android and iOS)*
 5. Deprecate direct string command parsing.
 
 ## Implementation Priority

@@ -211,10 +211,10 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         let args_str = &source[args_start + 1..args_start + ae];
                         let args: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
                         if args.len() == 2 {
-                            let url = resolve_expression(args[0], context, &runtime);
-                            let key = resolve_expression(args[1], context, &runtime);
-                            let rt = runtime.clone();
-                            tokio::spawn(async move { let _ = rt.fetch(&url, &key).await; });
+                            let _url = resolve_expression(args[0], context, &runtime);
+                            let _key = resolve_expression(args[1], context, &runtime);
+                            // let rt = runtime.clone();
+                            // tokio::spawn(async move { let _ = rt.fetch(&url, &key).await; });
                         }
                         search_start = args_start + ae + 1;
                         continue;

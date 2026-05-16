@@ -5,12 +5,14 @@
 //!
 //! ## Transformations
 //! - `struct.new $T` -> `call $gc_struct_new(T_id, num_fields)`
-//! - `struct.get $T $F` -> `call $gc_struct_get(handle, F_idx)`
-//! - `struct.set $T $F` -> `call $gc_struct_set(handle, F_idx, val)`
+//! - `struct.get $T $F` -> `call $gc_struct_get_T(handle, F_idx)`
+//! - `struct.set $T $F` -> `call $gc_struct_set_T(handle, F_idx, val)`
 //! - `array.new $T` -> `call $gc_array_new(T_id, len)`
-//! - `array.get $T` -> `call $gc_array_get(handle, idx)`
-//! - `array.set $T` -> `call $gc_array_set(handle, idx, val)`
+//! - `array.get $T` -> `call $gc_array_get_T(handle, idx)`
+//! - `array.set $T` -> `call $gc_array_set_T(handle, idx, val)`
 //! - `array.len` -> `call $gc_array_len(handle)`
+//! - `ref.test` -> `call $gc_ref_test(handle, type_id)`
+//! - `ref.cast` -> `call $gc_ref_cast(handle, type_id)`
 
 use wasm_encoder::{
     CodeSection, EntityType, ExportSection, FunctionSection, ImportSection, Instruction,
@@ -31,13 +33,24 @@ pub enum RewriteError {
 pub struct GcRewriter {
     input: Vec<u8>,
     gc_struct_new_idx: u32,
-    gc_struct_get_idx: u32,
-    gc_struct_set_idx: u32,
+    gc_struct_new_default_idx: u32,
+    gc_struct_get_i32_idx: u32,
+    gc_struct_get_i64_idx: u32,
+    gc_struct_get_f32_idx: u32,
+    gc_struct_get_f64_idx: u32,
+    gc_struct_set_i32_idx: u32,
+    gc_struct_set_ref_idx: u32,
+    gc_struct_set_i64_idx: u32,
+    gc_struct_set_f32_idx: u32,
+    gc_struct_set_f64_idx: u32,
     gc_array_new_idx: u32,
-    gc_array_get_idx: u32,
-    gc_array_set_idx: u32,
+    gc_array_new_default_idx: u32,
+    gc_array_get_i32_idx: u32,
+    gc_array_set_i32_idx: u32,
+    gc_array_set_ref_idx: u32,
     gc_array_len_idx: u32,
     gc_ref_test_idx: u32,
+    gc_ref_cast_idx: u32,
     gc_collect_idx: u32,
     original_import_func_count: u32,
     original_type_count: u32,
@@ -56,13 +69,24 @@ impl GcRewriter {
         Self {
             input: input.to_vec(),
             gc_struct_new_idx: 0,
-            gc_struct_get_idx: 0,
-            gc_struct_set_idx: 0,
+            gc_struct_new_default_idx: 0,
+            gc_struct_get_i32_idx: 0,
+            gc_struct_get_i64_idx: 0,
+            gc_struct_get_f32_idx: 0,
+            gc_struct_get_f64_idx: 0,
+            gc_struct_set_i32_idx: 0,
+            gc_struct_set_ref_idx: 0,
+            gc_struct_set_i64_idx: 0,
+            gc_struct_set_f32_idx: 0,
+            gc_struct_set_f64_idx: 0,
             gc_array_new_idx: 0,
-            gc_array_get_idx: 0,
-            gc_array_set_idx: 0,
+            gc_array_new_default_idx: 0,
+            gc_array_get_i32_idx: 0,
+            gc_array_set_i32_idx: 0,
+            gc_array_set_ref_idx: 0,
             gc_array_len_idx: 0,
             gc_ref_test_idx: 0,
+            gc_ref_cast_idx: 0,
             gc_collect_idx: 0,
             original_import_func_count: 0,
             original_type_count: 0,
@@ -77,7 +101,7 @@ impl GcRewriter {
 
     pub fn shift_func_idx(&self, idx: u32) -> u32 {
         if idx >= self.original_import_func_count {
-            idx + 9
+            idx + 20
         } else {
             idx
         }
@@ -90,15 +114,26 @@ impl GcRewriter {
         self.count_imports()?;
 
         let base = self.original_import_func_count;
-        self.gc_struct_new_idx = base + 0;
-        self.gc_struct_get_idx = base + 1;
-        self.gc_struct_set_idx = base + 2;
-        self.gc_array_new_idx  = base + 3;
-        self.gc_array_get_idx  = base + 4;
-        self.gc_array_set_idx  = base + 5;
-        self.gc_array_len_idx  = base + 6;
-        self.gc_ref_test_idx   = base + 7;
-        self.gc_collect_idx    = base + 8;
+        self.gc_struct_new_idx         = base + 0;
+        self.gc_struct_get_i32_idx     = base + 1;
+        self.gc_struct_get_i64_idx     = base + 2;
+        self.gc_struct_get_f32_idx     = base + 3;
+        self.gc_struct_get_f64_idx     = base + 4;
+        self.gc_struct_set_i32_idx     = base + 5;
+        self.gc_struct_set_ref_idx     = base + 6;
+        self.gc_struct_set_i64_idx     = base + 7;
+        self.gc_struct_set_f32_idx     = base + 8;
+        self.gc_struct_set_f64_idx     = base + 9;
+        self.gc_array_new_idx          = base + 10;
+        self.gc_array_get_i32_idx      = base + 11;
+        self.gc_array_set_i32_idx      = base + 12;
+        self.gc_array_set_ref_idx      = base + 13;
+        self.gc_array_len_idx          = base + 14;
+        self.gc_ref_test_idx           = base + 15;
+        self.gc_ref_cast_idx           = base + 16;
+        self.gc_collect_idx            = base + 17;
+        self.gc_struct_new_default_idx = base + 18;
+        self.gc_array_new_default_idx  = base + 19;
 
         let mut code_section = None;
 
@@ -143,15 +178,47 @@ impl GcRewriter {
                         }
                     }
 
+                    // Append host function types
+                    // gc_struct_new: (type_id: i32, field_count: i32) -> i32
                     type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_struct_get_i32: (handle: i32, field_idx: i32) -> i32
                     type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_struct_get_i64: (handle: i32, field_idx: i32) -> i64
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I64]);
+                    // gc_struct_get_f32: (handle: i32, field_idx: i32) -> f32
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::F32]);
+                    // gc_struct_get_f64: (handle: i32, field_idx: i32) -> f64
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::F64]);
+                    // gc_struct_set_i32: (handle: i32, field_idx: i32, value: i32) -> ()
                     type_section.function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]);
-                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
-                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_struct_set_ref: (handle: i32, field_idx: i32, ref_handle: i32) -> ()
                     type_section.function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]);
+                    // gc_struct_set_i64: (handle: i32, field_idx: i32, value: i64) -> ()
+                    type_section.function(vec![ValType::I32, ValType::I32, ValType::I64], vec![]);
+                    // gc_struct_set_f32: (handle: i32, field_idx: i32, value: f32) -> ()
+                    type_section.function(vec![ValType::I32, ValType::I32, ValType::F32], vec![]);
+                    // gc_struct_set_f64: (handle: i32, field_idx: i32, value: f64) -> ()
+                    type_section.function(vec![ValType::I32, ValType::I32, ValType::F64], vec![]);
+                    // gc_array_new: (type_id: i32, length: i32) -> i32
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_array_get_i32: (handle: i32, index: i32) -> i32
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_array_set_i32: (handle: i32, index: i32, value: i32) -> ()
+                    type_section.function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]);
+                    // gc_array_set_ref: (handle: i32, index: i32, ref_handle: i32) -> ()
+                    type_section.function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]);
+                    // gc_array_len: (handle: i32) -> i32
                     type_section.function(vec![ValType::I32], vec![ValType::I32]);
+                    // gc_ref_test: (handle: i32, expected_type_id: i32) -> i32
                     type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_ref_cast: (handle: i32, expected_type_id: i32) -> i32
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+                    // gc_collect: () -> ()
                     type_section.function(vec![], vec![]);
+                    // gc_struct_new_default: (type_id: i32) -> i32
+                    type_section.function(vec![ValType::I32], vec![ValType::I32]);
+                    // gc_array_new_default: (type_id: i32, length: i32) -> i32
+                    type_section.function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
 
                     module.section(&type_section);
                 }
@@ -182,15 +249,26 @@ impl GcRewriter {
                     }
 
                     let base_type_idx = self.original_type_count;
-                    import_section.import("env", "gc_struct_new", EntityType::Function(base_type_idx + 0));
-                    import_section.import("env", "gc_struct_get", EntityType::Function(base_type_idx + 1));
-                    import_section.import("env", "gc_struct_set", EntityType::Function(base_type_idx + 2));
-                    import_section.import("env", "gc_array_new", EntityType::Function(base_type_idx + 3));
-                    import_section.import("env", "gc_array_get", EntityType::Function(base_type_idx + 4));
-                    import_section.import("env", "gc_array_set", EntityType::Function(base_type_idx + 5));
-                    import_section.import("env", "gc_array_len", EntityType::Function(base_type_idx + 6));
-                    import_section.import("env", "gc_ref_test", EntityType::Function(base_type_idx + 7));
-                    import_section.import("env", "gc_collect", EntityType::Function(base_type_idx + 8));
+                    import_section.import("env", "gc_struct_new",     EntityType::Function(base_type_idx + 0));
+                    import_section.import("env", "gc_struct_get_i32", EntityType::Function(base_type_idx + 1));
+                    import_section.import("env", "gc_struct_get_i64", EntityType::Function(base_type_idx + 2));
+                    import_section.import("env", "gc_struct_get_f32", EntityType::Function(base_type_idx + 3));
+                    import_section.import("env", "gc_struct_get_f64", EntityType::Function(base_type_idx + 4));
+                    import_section.import("env", "gc_struct_set_i32", EntityType::Function(base_type_idx + 5));
+                    import_section.import("env", "gc_struct_set_ref", EntityType::Function(base_type_idx + 6));
+                    import_section.import("env", "gc_struct_set_i64", EntityType::Function(base_type_idx + 7));
+                    import_section.import("env", "gc_struct_set_f32", EntityType::Function(base_type_idx + 8));
+                    import_section.import("env", "gc_struct_set_f64", EntityType::Function(base_type_idx + 9));
+                    import_section.import("env", "gc_array_new",      EntityType::Function(base_type_idx + 10));
+                    import_section.import("env", "gc_array_get_i32",  EntityType::Function(base_type_idx + 11));
+                    import_section.import("env", "gc_array_set_i32",  EntityType::Function(base_type_idx + 12));
+                    import_section.import("env", "gc_array_set_ref",  EntityType::Function(base_type_idx + 13));
+                    import_section.import("env", "gc_array_len",      EntityType::Function(base_type_idx + 14));
+                    import_section.import("env", "gc_ref_test",       EntityType::Function(base_type_idx + 15));
+                    import_section.import("env", "gc_ref_cast",       EntityType::Function(base_type_idx + 16));
+                    import_section.import("env", "gc_collect",        EntityType::Function(base_type_idx + 17));
+                    import_section.import("env", "gc_struct_new_default", EntityType::Function(base_type_idx + 18));
+                    import_section.import("env", "gc_array_new_default",  EntityType::Function(base_type_idx + 19));
 
                     module.section(&import_section);
                 }
@@ -353,14 +431,30 @@ impl GcRewriter {
                         let op = operators.read()?;
                         match op {
                             wasmparser::Operator::StructNew { struct_type_index } => {
-                                let count = self.struct_field_counts.get(&struct_type_index).copied().unwrap_or(0);
+                                let field_count = self.struct_field_counts.get(&(struct_type_index as u32)).cloned().unwrap_or(0);
                                 function.instruction(&Instruction::I32Const(struct_type_index as i32));
-                                function.instruction(&Instruction::I32Const(count as i32));
+                                function.instruction(&Instruction::I32Const(field_count as i32));
                                 function.instruction(&Instruction::Call(self.gc_struct_new_idx));
                             }
-                            wasmparser::Operator::StructGet { struct_type_index: _, field_index } => {
+                            wasmparser::Operator::StructNewDefault { struct_type_index } => {
+                                function.instruction(&Instruction::I32Const(struct_type_index as i32));
+                                function.instruction(&Instruction::Call(self.gc_struct_new_default_idx));
+                            }
+
+                            wasmparser::Operator::StructGet { struct_type_index, field_index } => {
+                                let val_type = self.struct_field_types.get(&struct_type_index)
+                                    .and_then(|fields| fields.get(field_index as usize))
+                                    .copied()
+                                    .unwrap_or(ValType::I32);
+                                
                                 function.instruction(&Instruction::I32Const(field_index as i32));
-                                function.instruction(&Instruction::Call(self.gc_struct_get_idx));
+                                let call_idx = match val_type {
+                                    ValType::I64 => self.gc_struct_get_i64_idx,
+                                    ValType::F32 => self.gc_struct_get_f32_idx,
+                                    ValType::F64 => self.gc_struct_get_f64_idx,
+                                    _ => self.gc_struct_get_i32_idx,
+                                };
+                                function.instruction(&Instruction::Call(call_idx));
                             }
                             wasmparser::Operator::StructSet { struct_type_index, field_index } => {
                                 let val_type = self.struct_field_types.get(&struct_type_index)
@@ -368,39 +462,61 @@ impl GcRewriter {
                                     .copied()
                                     .unwrap_or(ValType::I32);
                                 
-                                let scratch_idx = match val_type {
-                                    ValType::I32 => self.scratch_i32_idx,
-                                    ValType::I64 => self.scratch_i64_idx,
-                                    ValType::F32 => self.scratch_f32_idx,
-                                    ValType::F64 => self.scratch_f64_idx,
-                                    _ => self.scratch_i32_idx,
+                                let (scratch_idx, call_idx) = match val_type {
+                                    ValType::I32 => (self.scratch_i32_idx, self.gc_struct_set_i32_idx),
+                                    ValType::I64 => (self.scratch_i64_idx, self.gc_struct_set_i64_idx),
+                                    ValType::F32 => (self.scratch_f32_idx, self.gc_struct_set_f32_idx),
+                                    ValType::F64 => (self.scratch_f64_idx, self.gc_struct_set_f64_idx),
+                                    _ => (self.scratch_i32_idx, self.gc_struct_set_ref_idx),
                                 };
 
                                 function.instruction(&Instruction::GlobalSet(scratch_idx));
                                 function.instruction(&Instruction::I32Const(field_index as i32));
-                                
-                                if val_type == ValType::I32 {
-                                    function.instruction(&Instruction::GlobalGet(scratch_idx));
-                                } else {
-                                    function.instruction(&Instruction::I32Const(0));
-                                }
-                                function.instruction(&Instruction::Call(self.gc_struct_set_idx));
+                                function.instruction(&Instruction::GlobalGet(scratch_idx));
+                                function.instruction(&Instruction::Call(call_idx));
                             }
                             wasmparser::Operator::ArrayNew { array_type_index } => {
                                 function.instruction(&Instruction::I32Const(array_type_index as i32));
                                 function.instruction(&Instruction::Call(self.gc_array_new_idx));
                             }
+                            wasmparser::Operator::ArrayNewDefault { array_type_index } => {
+                                function.instruction(&Instruction::I32Const(array_type_index as i32));
+                                function.instruction(&Instruction::Call(self.gc_array_new_default_idx));
+                            }
                             wasmparser::Operator::ArrayGet { .. } => {
-                                function.instruction(&Instruction::Call(self.gc_array_get_idx));
+                                // Default to i32 for now
+                                function.instruction(&Instruction::Call(self.gc_array_get_i32_idx));
                             }
                             wasmparser::Operator::ArraySet { .. } => {
-                                // For simplicity, drop value and push dummy, similar to above, since we lack type tracking for arrays
-                                function.instruction(&Instruction::Drop);
-                                function.instruction(&Instruction::I32Const(0));
-                                function.instruction(&Instruction::Call(self.gc_array_set_idx));
+                                // Default to i32 for now, or detect type if we track array types
+                                function.instruction(&Instruction::GlobalSet(self.scratch_i32_idx));
+                                function.instruction(&Instruction::GlobalGet(self.scratch_i32_idx));
+                                function.instruction(&Instruction::Call(self.gc_array_set_i32_idx));
                             }
                             wasmparser::Operator::ArrayLen => {
                                 function.instruction(&Instruction::Call(self.gc_array_len_idx));
+                            }
+                            wasmparser::Operator::RefTestNonNull { hty } | wasmparser::Operator::RefTestNullable { hty } => {
+                                let type_id = match hty {
+                                    wasmparser::HeapType::Concrete(idx) => match idx {
+                                        wasmparser::UnpackedIndex::Module(i) => i,
+                                        _ => 0,
+                                    },
+                                    _ => 0,
+                                };
+                                function.instruction(&Instruction::I32Const(type_id as i32));
+                                function.instruction(&Instruction::Call(self.gc_ref_test_idx));
+                            }
+                            wasmparser::Operator::RefCastNonNull { hty } | wasmparser::Operator::RefCastNullable { hty } => {
+                                let type_id = match hty {
+                                    wasmparser::HeapType::Concrete(idx) => match idx {
+                                        wasmparser::UnpackedIndex::Module(i) => i,
+                                        _ => 0,
+                                    },
+                                    _ => 0,
+                                };
+                                function.instruction(&Instruction::I32Const(type_id as i32));
+                                function.instruction(&Instruction::Call(self.gc_ref_cast_idx));
                             }
                             _ => {
                                 let translated = self.translate_op(&op);
@@ -587,3 +703,4 @@ fn map_memarg(memarg: &wasmparser::MemArg) -> wasm_encoder::MemArg {
         memory_index: memarg.memory,
     }
 }
+// Diagnostic comment

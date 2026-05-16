@@ -1,0 +1,22 @@
+{
+  "entry": "src/commonMain/kotlin/com/example/netflix/App.kt",
+  "assets": [
+    "src/commonMain/resources"
+  ],
+  "generatedIr": "build/generated/ksp/metadata/commonMain/kotlin/feather/app.feather.json",
+  "fallbackIr": ".feather/app.feather.json",
+  "sdkVersion": "1.0.0",
+  "modules": {
+    "feather-media": "1.0.0",
+    "feather-navigation": "1.0.0",
+    "feather-network": "1.0.0",
+    "feather-storage": "1.0.0",
+    "feather-device": "1.0.0"
+  },
+  "metadata": {
+    "app_id": "com.example.netflix",
+    "display_name": "Netflix Clone",
+    "version_name": "1.0.0",
+    "version_code": 1
+  }
+}

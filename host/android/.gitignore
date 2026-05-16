@@ -1,0 +1,17 @@
+# Android build artifacts
+build/
+.gradle/
+local.properties
+*.apk
+*.aar
+*.jks
+
+# IDE
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Feather Production Bundles
+src/main/assets/feather/

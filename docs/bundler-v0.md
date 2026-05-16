@@ -35,7 +35,7 @@ Feather Bundler v0 creates a local `.featherbundle` directory for the active pro
 - `GET /bundle/manifest` serves current bundle metadata.
 - `GET /bundle/artifact/app.feather.json` serves a bundle artifact.
 - `assets` entries in `feather.json` are copied into `.featherbundle/assets`.
-- Native module requirements are discovered from IR nodes with `module` fields.
+- Native module requirements (including platform support and required permissions) are discovered from IR nodes with `module` fields.
 - Delta metadata is computed from the previous `.featherbundle/manifest.json`.
 - Bundle manifest, delta, artifact checksum, module discovery, and state resolution primitives live in `core`.
 - Android and iOS hosts can fetch the manifest/artifact path before subscribing to WebSocket updates.

@@ -1,0 +1,9 @@
+# Gradle/Kotlin build artifacts
+build/
+.gradle/
+*.hprof
+
+# IDE
+.idea/
+*.iml
+.kotlin/

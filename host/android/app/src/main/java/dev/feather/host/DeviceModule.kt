@@ -61,6 +61,27 @@ class DeviceModule : FeatherModule {
                 context.sendStateAssignment("", text)
                 true
             }
+            "getDimensions" -> {
+                val displayMetrics = context.appContext.resources.displayMetrics
+                val width = displayMetrics.widthPixels / displayMetrics.density
+                val height = displayMetrics.heightPixels / displayMetrics.density
+                val result = JSONObject().apply {
+                    put("width", width)
+                    put("height", height)
+                    put("scale", displayMetrics.density.toDouble())
+                }
+                context.sendStateAssignment("", result.toString())
+                true
+            }
+            "getDeviceInfo" -> {
+                val result = JSONObject().apply {
+                    put("os", "android")
+                    put("version", Build.VERSION.RELEASE)
+                    put("model", Build.MODEL)
+                }
+                context.sendStateAssignment("", result.toString())
+                true
+            }
             else -> false
         }
     }

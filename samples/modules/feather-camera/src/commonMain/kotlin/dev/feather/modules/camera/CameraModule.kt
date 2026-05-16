@@ -19,6 +19,8 @@ import dev.feather.sdk.FeatherModule
  * // and the Host app renders it via ModuleRegistry.
  * ```
  */
+import dev.feather.sdk.callModuleMsgpack
+
 class CameraModule : FeatherModule {
     override val name = "feather-camera"
     override val version = "1.0.0"
@@ -27,4 +29,14 @@ class CameraModule : FeatherModule {
         "CameraPreview",
         "PhotoPicker"
     )
+
+    /** Takes a photo and stores the result (base64) in the given state key. */
+    fun takePhoto(resultStateKey: String) {
+        callModuleMsgpack(
+            module = name,
+            method = "takePhoto",
+            payload = emptyMap<String, String>(),
+            stateKey = resultStateKey
+        )
+    }
 }

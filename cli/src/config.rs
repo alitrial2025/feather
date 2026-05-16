@@ -15,10 +15,12 @@ pub struct DevServerConfig {
     pub fallback_ir_path: Option<PathBuf>,
     pub host: IpAddr,
     pub port: u16,
+    pub tunnel: bool,
+    pub manifest: FeatherManifest,
 }
 
 impl DevServerConfig {
-    pub fn new(project_path: PathBuf, host: IpAddr, port: u16) -> Result<Self, String> {
+    pub fn new(project_path: PathBuf, host: IpAddr, port: u16, tunnel: bool) -> Result<Self, String> {
         let project_path = project_path
             .canonicalize()
             .map_err(|error| format!("Project path does not exist: {error}"))?;
@@ -52,6 +54,10 @@ impl DevServerConfig {
                 sdk_version: Some(FEATHER_SDK_VERSION.to_string()),
                 modules: Some(HashMap::new()),
                 dependencies: None,
+                metadata: Default::default(),
+                deep_links: Vec::new(),
+                permissions: Vec::new(),
+                platform_overrides: HashMap::new(),
             }
         };
 
@@ -65,6 +71,7 @@ impl DevServerConfig {
 
         let asset_paths = manifest
             .assets
+            .clone()
             .unwrap_or_default()
             .into_iter()
             .map(|asset_path| project_path.join(asset_path))
@@ -72,9 +79,11 @@ impl DevServerConfig {
         let bundle_path = project_path.join(BUNDLE_DIR_NAME);
         let generated_ir_path = manifest
             .generated_ir
+            .as_ref()
             .map(|generated_ir| project_path.join(generated_ir));
         let fallback_ir_path = manifest
             .fallback_ir
+            .as_ref()
             .map(|fallback_ir| project_path.join(fallback_ir));
 
         Ok(Self {
@@ -86,6 +95,8 @@ impl DevServerConfig {
             fallback_ir_path,
             host,
             port,
+            tunnel,
+            manifest,
         })
     }
 }

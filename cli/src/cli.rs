@@ -20,9 +20,17 @@ pub enum Commands {
         host: IpAddr,
         #[arg(long, default_value_t = 8080)]
         port: u16,
+        #[arg(long, help = "Expose the server via a tunnel/public URL")]
+        tunnel: bool,
     },
     /// Install a module
     Install {
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        module: String,
+    },
+    /// Uninstall a module
+    Uninstall {
         #[arg(long, default_value = ".")]
         project: PathBuf,
         module: String,
@@ -37,8 +45,8 @@ pub enum Commands {
         #[arg(long, default_value = ".")]
         project: PathBuf,
     },
-    /// Upgrade project dependencies
-    Upgrade {
+    /// Upgrade/Update project dependencies
+    Update {
         #[arg(long, default_value = ".")]
         project: PathBuf,
     },

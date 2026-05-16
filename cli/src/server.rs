@@ -21,11 +21,24 @@ pub async fn run_server(config: DevServerConfig) {
         host
     };
 
-    let connect_url = format!("ws://{}:{}/ws", my_local_ip, port);
+    let mut connect_url = format!("ws://{}:{}/ws", my_local_ip, port);
+    let mut tunnel_msg = "".to_string();
+
+    if config.tunnel {
+        if let Some(public_url) = get_public_url(port) {
+            connect_url = format!("{}/ws", public_url.replace("http", "ws"));
+            tunnel_msg = format!("🌐  Public Tunnel: {}\n", public_url);
+        } else {
+            tunnel_msg = "⚠️   Tunneling requested but no environment provider found.\n    Install ngrok: 'ngrok http 8080'\n".to_string();
+        }
+    }
 
     println!("\n-------------------------------------------");
     println!("🪶  Feather Dev Server is active!");
     println!("🔗  Connect at: {}", connect_url);
+    if !tunnel_msg.is_empty() {
+        print!("{}", tunnel_msg);
+    }
     println!("-------------------------------------------");
     println!("Scan this QR code with your phone to connect:");
     if let Err(e) = print_qr(&connect_url) {
@@ -164,12 +177,28 @@ fn watch_files(
     for res in std_rx {
         match res {
             Ok(event) => {
-                println!("File changed: {:?}", event);
+                // Ignore build and cache directories
+                let should_ignore = event.paths.iter().any(|path| {
+                    let p = path.to_string_lossy();
+                    p.contains("/build/") || 
+                    p.contains("/.gradle/") || 
+                    p.contains("/.idea/") || 
+                    p.contains("/.git/") ||
+                    p.contains("/.featherbundle/") ||
+                    p.contains("/node_modules/")
+                });
+
+                if should_ignore {
+                    continue;
+                }
+
                 let changed_wasm = event
                     .paths
                     .iter()
                     .any(|path| path.extension().and_then(|ext| ext.to_str()) == Some("wasm"));
+                
                 if changed_wasm {
+                    println!("WASM changed: {:?}", event.paths);
                     let _ = crate::bundler::build_bundle(&config, &runtime);
                     let _ = tx.send(
                         serde_json::json!({
@@ -179,6 +208,7 @@ fn watch_files(
                         .to_string(),
                     );
                 } else {
+                    println!("File changed: {:?}", event.paths);
                     let _ = tx.send(render_document(&config, &runtime));
                 }
             }
@@ -267,4 +297,18 @@ async fn handle_connection(
 
 fn apply_action_event(payload: &str, runtime: &Arc<AppRuntime>) {
     runtime.apply_action_event(payload);
+}
+
+fn get_public_url(port: u16) -> Option<String> {
+    // 1. Check for Google Cloud Workstations (Monospace)
+    if let Ok(web_host) = std::env::var("WEB_HOST") {
+        return Some(format!("https://{}-{}", port, web_host));
+    }
+
+    // 2. Check for VS Code Browser Port (Codespaces / Dev Containers)
+    if let Ok(cluster) = std::env::var("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN") {
+        return Some(format!("https://{}-{}.{}", std::env::var("CODESPACE_NAME").unwrap_or_default(), port, cluster));
+    }
+
+    None
 }

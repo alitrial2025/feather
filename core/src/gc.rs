@@ -29,19 +29,42 @@ use std::collections::{HashMap, HashSet};
 pub struct StructType {
     pub type_id: u32,
     pub field_count: usize,
+    pub field_types: Vec<GcType>,
     /// true = mutable, false = immutable, per field
     pub field_mutability: Vec<bool>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum GcType {
+    I32,
+    I64,
+    F32,
+    F64,
+    Ref,
+}
+
+impl GcType {
+    pub fn default_value(&self) -> GcValue {
+        match self {
+            GcType::I32 => GcValue::I32(0),
+            GcType::I64 => GcValue::I64(0),
+            GcType::F32 => GcValue::F32(0.0),
+            GcType::F64 => GcValue::F64(0.0),
+            GcType::Ref => GcValue::NullRef,
+        }
+    }
 }
 
 /// A type descriptor for a WasmGC array.
 #[derive(Clone, Debug)]
 pub struct ArrayType {
     pub type_id: u32,
+    pub element_type: GcType,
     pub element_mutable: bool,
 }
 
 /// A value stored in a GC-managed object field or array element.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GcValue {
     I32(i32),
     I64(i64),
@@ -202,6 +225,16 @@ impl GcHeap {
         GcRef::Struct(idx)
     }
 
+    /// Allocate a new struct of the given type with default values.
+    pub fn struct_new_default(&mut self, type_id: u32) -> GcRef {
+        let fields = if let Some(stype) = self.struct_types.get(&type_id) {
+            stype.field_types.iter().map(|t| t.default_value()).collect()
+        } else {
+            Vec::new()
+        };
+        self.struct_new(type_id, fields)
+    }
+
     /// Allocate a new array of the given type with initial elements.
     pub fn array_new(&mut self, type_id: u32, elements: Vec<GcValue>) -> GcRef {
         self.maybe_collect();
@@ -223,6 +256,17 @@ impl GcHeap {
 
         self.alloc_count += 1;
         GcRef::Array(idx)
+    }
+
+    /// Allocate a new array of the given type with default values.
+    pub fn array_new_default(&mut self, type_id: u32, len: u32) -> GcRef {
+        let default_val = if let Some(atype) = self.array_types.get(&type_id) {
+            atype.element_type.default_value()
+        } else {
+            GcValue::I32(0)
+        };
+        let elements = vec![default_val; len as usize];
+        self.array_new(type_id, elements)
     }
 
     // ─── Field / Element Access ──────────────────────────────────────────
@@ -317,6 +361,18 @@ impl GcHeap {
         }
     }
 
+    /// Clear all roots.
+    pub fn clear_roots(&mut self) {
+        self.roots.clear();
+    }
+
+    /// Add a root.
+    pub fn add_root(&mut self, handle: i32) {
+        if handle != 0 {
+            self.roots.insert(handle);
+        }
+    }
+
     // ─── Garbage Collection (Mark & Sweep) ───────────────────────────────
 
     fn maybe_collect(&mut self) {
@@ -340,9 +396,12 @@ impl GcHeap {
         }
 
         // Phase 2: Mark from roots
-        let roots: Vec<i32> = self.roots.iter().copied().collect();
-        for handle in roots {
-            self.mark(GcRef::from_handle(handle));
+        let mut worklist: Vec<GcRef> = self.roots.iter()
+            .map(|&h| GcRef::from_handle(h))
+            .collect();
+
+        while let Some(gc_ref) = worklist.pop() {
+            self.mark_iterative(gc_ref, &mut worklist);
         }
 
         // Phase 3: Sweep unmarked objects
@@ -377,19 +436,18 @@ impl GcHeap {
         self.alloc_count = 0;
     }
 
-    /// Recursively mark an object and everything it references.
-    fn mark(&mut self, gc_ref: GcRef) {
+    /// Mark an object and add its children to the worklist.
+    fn mark_iterative(&mut self, gc_ref: GcRef, worklist: &mut Vec<GcRef>) {
         match gc_ref {
             GcRef::Struct(idx) => {
                 if let Some(Some(obj)) = self.structs.get_mut(idx as usize) {
                     if obj.marked {
-                        return; // Already visited
+                        return;
                     }
                     obj.marked = true;
-                    let fields = obj.fields.clone();
-                    for field in &fields {
+                    for field in &obj.fields {
                         if let GcValue::Ref(child_ref) = field {
-                            self.mark(*child_ref);
+                            worklist.push(*child_ref);
                         }
                     }
                 }
@@ -400,10 +458,9 @@ impl GcHeap {
                         return;
                     }
                     obj.marked = true;
-                    let elements = obj.elements.clone();
-                    for elem in &elements {
+                    for elem in &obj.elements {
                         if let GcValue::Ref(child_ref) = elem {
-                            self.mark(*child_ref);
+                            worklist.push(*child_ref);
                         }
                     }
                 }
@@ -437,6 +494,7 @@ mod tests {
         heap.register_struct_type(StructType {
             type_id: 1,
             field_count: 2,
+            field_types: vec![GcType::I32, GcType::I32],
             field_mutability: vec![true, true],
         });
 
@@ -449,10 +507,27 @@ mod tests {
     }
 
     #[test]
+    fn test_struct_new_default() {
+        let mut heap = GcHeap::new();
+        heap.register_struct_type(StructType {
+            type_id: 1,
+            field_count: 3,
+            field_types: vec![GcType::I32, GcType::F64, GcType::Ref],
+            field_mutability: vec![true, true, true],
+        });
+
+        let r = heap.struct_new_default(1);
+        assert_eq!(heap.struct_get(r, 0), Some(GcValue::I32(0)));
+        assert_eq!(heap.struct_get(r, 1), Some(GcValue::F64(0.0)));
+        assert_eq!(heap.struct_get(r, 2), Some(GcValue::NullRef));
+    }
+
+    #[test]
     fn test_array_alloc_and_access() {
         let mut heap = GcHeap::new();
         heap.register_array_type(ArrayType {
             type_id: 2,
+            element_type: GcType::I32,
             element_mutable: true,
         });
 
@@ -470,6 +545,7 @@ mod tests {
         heap.register_struct_type(StructType {
             type_id: 1,
             field_count: 1,
+            field_types: vec![GcType::I32],
             field_mutability: vec![true],
         });
 
@@ -494,6 +570,7 @@ mod tests {
         heap.register_struct_type(StructType {
             type_id: 1,
             field_count: 1,
+            field_types: vec![GcType::Ref],
             field_mutability: vec![true],
         });
 

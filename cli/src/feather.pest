@@ -1,0 +1,34 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ ("//" ~ (!"\n" ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
+
+file = { SOI ~ (import_stmt | state_stmt)* ~ widget? ~ EOI }
+
+import_stmt = { "import" ~ string_literal }
+state_stmt = { "state" ~ identifier ~ "=" ~ expression }
+
+widget = { identifier ~ ("(" ~ arguments? ~ ")")? ~ ("{" ~ children? ~ "}")? }
+children = { (if_expr | for_expr | widget)* }
+
+arguments = { argument ~ ("," ~ argument)* }
+argument = { (identifier ~ ":")? ~ expression }
+
+// --- Control Flow ---
+if_expr = { "if" ~ "(" ~ expression ~ ")" ~ "{" ~ children? ~ "}" ~ ("else" ~ "{" ~ children? ~ "}")? }
+for_expr = { "for" ~ "(" ~ identifier ~ "in" ~ expression ~ ")" ~ "{" ~ children? ~ "}" }
+
+// --- Expressions ---
+expression = { term ~ (bin_op ~ term)* }
+term = { value | "(" ~ expression ~ ")" }
+
+bin_op = { "+" | "-" | "*" | "/" | "==" | "!=" | ">" | "<" | ">=" | "<=" | "&&" | "||" }
+
+value = { string_literal | number_literal | boolean_literal | list_literal | identifier }
+
+list_literal = { "[" ~ (expression ~ ("," ~ expression)*)? ~ "]" }
+
+identifier = @{ !reserved_word ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+reserved_word = @{ ("if" | "else" | "for" | "in" | "state" | "import" | "true" | "false") ~ !ASCII_ALPHANUMERIC }
+
+string_literal = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+number_literal = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+boolean_literal = @{ "true" | "false" }
