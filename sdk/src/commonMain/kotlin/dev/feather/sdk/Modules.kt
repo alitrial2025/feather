@@ -100,19 +100,33 @@ object Clipboard {
 
 /** HTTP networking module — performs requests through the Rust host. */
 object Network {
-    @Serializable data class GetRequest(val url: String)
-    @Serializable data class RequestWithBody(val url: String, val body: String)
+    @Serializable
+    data class NetworkRequest(
+        val url: String,
+        val headers: Map<String, String> = emptyMap(),
+        val body: String? = null,
+        val bodyType: String? = "json" // "json" or "form"
+    )
 
     /** Perform an HTTP GET and store result in the given state key. */
-    fun get(url: String, stateKey: String): String = moduleCall("feather-network", "get", GetRequest(url), stateKey)
+    fun get(url: String, stateKey: String, headers: Map<String, String> = emptyMap()): String = 
+        moduleCall("feather-network", "get", NetworkRequest(url, headers), stateKey)
+    
     /** Perform an HTTP POST with a JSON body. */
-    fun post(url: String, body: String, stateKey: String): String =
-        moduleCall("feather-network", "post", RequestWithBody(url, body), stateKey)
+    fun post(url: String, body: String, stateKey: String, headers: Map<String, String> = emptyMap()): String =
+        moduleCall("feather-network", "post", NetworkRequest(url, headers, body, "json"), stateKey)
+    
+    /** Perform an HTTP POST with form data. */
+    fun postForm(url: String, body: Map<String, String>, stateKey: String, headers: Map<String, String> = emptyMap()): String =
+        moduleCall("feather-network", "post", NetworkRequest(url, headers, Json.encodeToString(body), "form"), stateKey)
+
     /** Perform an HTTP PUT with a JSON body. */
-    fun put(url: String, body: String, stateKey: String): String =
-        moduleCall("feather-network", "put", RequestWithBody(url, body), stateKey)
+    fun put(url: String, body: String, stateKey: String, headers: Map<String, String> = emptyMap()): String =
+        moduleCall("feather-network", "put", NetworkRequest(url, headers, body, "json"), stateKey)
+    
     /** Perform an HTTP DELETE. */
-    fun delete(url: String, stateKey: String): String = moduleCall("feather-network", "delete", GetRequest(url), stateKey)
+    fun delete(url: String, stateKey: String, headers: Map<String, String> = emptyMap()): String = 
+        moduleCall("feather-network", "delete", NetworkRequest(url, headers), stateKey)
 }
 
 /** Persistent key-value storage (SharedPreferences / UserDefaults). */
@@ -133,20 +147,35 @@ object Storage {
 
 /** Camera access module. */
 object Camera {
+    @Serializable class EmptyRequest
+
     /** Take a photo and store the base64 result in the given state key. */
-    fun takePhoto(stateKey: String) {
-        callModuleMsgpack(
-            module = "feather-camera",
-            method = "takePhoto",
-            payload = emptyMap<String, String>(),
-            stateKey = stateKey
-        )
-    }
+    fun takePhoto(stateKey: String): String = moduleCall("feather-camera", "takePhoto", EmptyRequest(), stateKey)
 
     /** Pick an image from the gallery. */
-    fun pickImage(stateKey: String): String = moduleCall("feather-camera", "pickImage", mapOf<String, String>(), stateKey)
+    fun pickImage(stateKey: String): String = moduleCall("feather-camera", "pickImage", EmptyRequest(), stateKey)
+    
     /** Record a video and store the URI. */
-    fun recordVideo(stateKey: String): String = moduleCall("feather-camera", "recordVideo", mapOf<String, String>(), stateKey)
+    fun recordVideo(stateKey: String): String = moduleCall("feather-camera", "recordVideo", EmptyRequest(), stateKey)
+}
+
+/** Native Maps module. */
+object Maps {
+    @Serializable
+    data class MapRequest(
+        val latitude: Double,
+        val longitude: Double,
+        val label: String? = null,
+        val zoom: Float? = null
+    )
+
+    /** Open the native maps app at the given location. */
+    fun open(latitude: Double, longitude: Double, label: String? = null): String =
+        moduleCall("feather-maps", "open", MapRequest(latitude, longitude, label))
+
+    /** Add a marker to an existing MapView. */
+    fun addMarker(latitude: Double, longitude: Double, label: String? = null): String =
+        moduleCall("feather-maps", "addMarker", MapRequest(latitude, longitude, label))
 }
 
 /** Location and GPS module. */

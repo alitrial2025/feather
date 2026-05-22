@@ -64,6 +64,13 @@ fun QRScanner(
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (hasCameraPermission) {
             val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+
+            DisposableEffect(cameraExecutor) {
+                onDispose {
+                    cameraExecutor.shutdown()
+                }
+            }
+
             val scanner = remember {
                 val options = BarcodeScannerOptions.Builder()
                     .setBarcodeFormats(Barcode.FORMAT_QR_CODE)

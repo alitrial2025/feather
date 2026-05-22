@@ -62,3 +62,5 @@ To provide a seamless developer experience where Kotlin logic and native UI are 
 *   **Error Handling:** Improve the "Red Screen of Death" on mobile devices with better stack traces from the Wasm engine.
 *   **Bundle Size:** Further optimize the WASM binary and JSON IR to reduce initial download time.
 *   **Diagnostics:** Expand `feather doctor` to check for specific Android NDK and iOS Xcode configuration issues.
+*   **QR Scanner Android:** The QR Scanner in `host/android/.../QRScanner.kt` has a known resource issue where the `cameraExecutor` (`Executors.newSingleThreadExecutor()`) is not shut down when the composable leaves the composition. This needs to be wrapped in a `DisposableEffect` to call `shutdown()`.
+*   **QR Scanner iOS:** The iOS implementation for `QRScanner` is completely missing or incomplete, preventing feature parity for barcode scanning.

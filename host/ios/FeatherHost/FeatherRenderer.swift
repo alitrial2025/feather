@@ -379,12 +379,21 @@ struct DynamicView: View {
 
         // ── Feedback ──
         case .dialog(_, _, _, _, _, _, _, _): EmptyView() // Dialogs managed by state
-        case .bottomSheet(_, let visible, let content, _, let style):
-            if visible { VStack { DynamicView(node: content, moduleRegistry: moduleRegistry, onAction: onAction) }.featherStyle(style) }
+        case .bottomSheet(_, let visible, let content, let dismissAction, let style):
+            Color.clear
+                .sheet(isPresented: Binding(
+                    get: { visible },
+                    set: { isVisible in
+                        if !isVisible, let action = dismissAction {
+                            onAction(action, nil)
+                        }
+                    }
+                )) {
+                    DynamicView(node: content, moduleRegistry: moduleRegistry, onAction: onAction)
+                        .featherStyle(style)
+                }
         case .snackbar(_, let message, let visible, let actionText, let action):
             if visible { HStack { Text(message).foregroundColor(.white); SwiftUI.Spacer(); if let at = actionText { Button(at) { if let a = action { onAction(a, nil) } }.foregroundColor(.yellow) } }.padding().background(Color(.darkGray)).cornerRadius(8).padding() }
-        case .badge(_, let count, let color, let child):
-            ZStack(alignment: .topTrailing) { if let c = child { DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }; if count > 0 { Text(count > 99 ? "99+" : "\(count)").font(.caption2).foregroundColor(.white).padding(4).background(FeatherStyle.parseColor(color) ?? .red).clipShape(Circle()) } }
         case .badge(_, let count, let color, let child):
             ZStack(alignment: .topTrailing) { if let c = child { DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) }; if count > 0 { Text(count > 99 ? "99+" : "\(count)").font(.caption2).foregroundColor(.white).padding(4).background(FeatherStyle.parseColor(color) ?? .red).clipShape(Circle()) } }
         case .chip(_, let label, let selected, let action, _, let color):
@@ -405,8 +414,22 @@ struct DynamicView: View {
             HStack { ForEach(children) { c in DynamicView(node: c, moduleRegistry: moduleRegistry, onAction: onAction) } }.padding().background(FeatherStyle.parseColor(bg) ?? Color(.systemBackground))
         case .tabRow(_, let tabs, let selected, let action, _, _):
             HStack { ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in Button(action: { onAction(action, "\(i)") }) { Text(t.title).fontWeight(i == selected ? .bold : .regular).padding(8) } } }
-        case .pager(_, let pages, let currentPage, _, let style):
-            if let p = currentPage, p < pages.count { DynamicView(node: pages[p], moduleRegistry: moduleRegistry, onAction: onAction).featherStyle(style) }
+        case .pager(_, let pages, let currentPage, let action, let style):
+            TabView(selection: Binding(
+                get: { currentPage ?? 0 },
+                set: { newValue in
+                    if let act = action {
+                        onAction(act, "\(newValue)")
+                    }
+                }
+            )) {
+                ForEach(Array(pages.enumerated()), id: \.offset) { i, page in
+                    DynamicView(node: page, moduleRegistry: moduleRegistry, onAction: onAction)
+                        .tag(i)
+                }
+            }
+            .tabViewStyle(PageTabViewStyle())
+            .featherStyle(style)
         case .drawer(_, let header, _, let style):
             VStack(alignment: .leading) { if let h = header { DynamicView(node: h, moduleRegistry: moduleRegistry, onAction: onAction) } }.featherStyle(style)
 

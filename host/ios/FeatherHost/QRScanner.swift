@@ -45,7 +45,7 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     weak var delegate: QRScannerViewControllerDelegate?
 
     override func viewDidLoad() {
-        super.viewInDidLoad()
+        super.viewDidLoad()
 
         view.backgroundColor = UIColor.black
         captureSession = AVCaptureSession()
