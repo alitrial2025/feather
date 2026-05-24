@@ -44,7 +44,9 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                        DiagnosticsOverlay(errors: client.errors)
+                        DiagnosticsOverlay(errors: client.errors) {
+                            client.resetAndConnect()
+                        }
                     }
                 }
             }

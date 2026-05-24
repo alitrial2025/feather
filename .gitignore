@@ -19,3 +19,23 @@ Thumbs.db
 **/dist/
 **/.feather/
 java_pid*.hprof
+
+# Logs
+*.log
+
+# Android local config & keys
+local.properties
+*.jks
+*.keystore
+
+# iOS package managers
+Pods/
+.recommenders/
+
+# Cargo locks
+Cargo.lock
+
+# IDX
+.idx/
+
+

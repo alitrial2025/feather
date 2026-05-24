@@ -20,11 +20,12 @@ final class FeatherDevClient: NSObject, ObservableObject {
     private var reconnectTimer: Timer?
     private let maxReconnectAttempts = 5
     private var reconnectAttempts = 0
+    private var currentJsonMessage: [String: Any]? = nil
 
     override init() {
         let lastIp = UserDefaults.standard.string(forKey: "last_ip") ?? "127.0.0.1"
-        self.baseURL = URL(string: "http://\(lastIp):8080")!
-        self.socketURL = URL(string: "ws://\(lastIp):8080/ws")!
+        self.baseURL = URL(string: "http://\(lastIp):8080") ?? URL(string: "http://127.0.0.1:8080")!
+        self.socketURL = URL(string: "ws://\(lastIp):8080/ws") ?? URL(string: "ws://127.0.0.1:8080/ws")!
         super.init()
         updateURLs(hostOrURL: lastIp)
         registerOfficialModules()
@@ -106,12 +107,12 @@ final class FeatherDevClient: NSObject, ObservableObject {
             let host = url.host ?? "127.0.0.1"
             let port = url.port != nil ? ":\(url.port!)" : ""
             
-            self.baseURL = URL(string: "\(scheme)://\(host)\(port)")!
+            self.baseURL = URL(string: "\(scheme)://\(host)\(port)") ?? URL(string: "http://127.0.0.1:8080")!
             let wsScheme = scheme == "https" ? "wss" : "ws"
-            self.socketURL = URL(string: "\(wsScheme)://\(host)\(port)/ws")!
+            self.socketURL = URL(string: "\(wsScheme)://\(host)\(port)/ws") ?? URL(string: "ws://127.0.0.1:8080/ws")!
         } else {
-            self.baseURL = URL(string: "http://\(trimmed):8080")!
-            self.socketURL = URL(string: "ws://\(trimmed):8080/ws")!
+            self.baseURL = URL(string: "http://\(trimmed):8080") ?? URL(string: "http://127.0.0.1:8080")!
+            self.socketURL = URL(string: "ws://\(trimmed):8080/ws") ?? URL(string: "ws://127.0.0.1:8080/ws")!
         }
     }
 
@@ -149,6 +150,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
             let resolved = runtime.resolveStateTextNodes(jsonPayload: jsonPayload)
             if let resolvedData = resolved.data(using: .utf8),
                let (node, newErrors) = try? FeatherRenderPayload.decode(resolvedData) {
+                if let dict = try? JSONSerialization.jsonObject(with: resolvedData, options: []) as? [String: Any] {
+                    self.currentJsonMessage = dict
+                }
                 self.root = node
                 self.errors = newErrors
                 isConnected = true
@@ -201,6 +205,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
                                 }
                             } else if let data = renderTree.data(using: .utf8),
                                       let (node, newErrors) = try? FeatherRenderPayload.decode(data) {
+                                if let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                                    self.currentJsonMessage = dict
+                                }
                                 self.root = node
                                 self.errors = newErrors
                             }
@@ -245,6 +252,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
             let jsonPayload = String(data: data, encoding: .utf8) ?? "{}"
             let resolved = runtime.resolveStateTextNodes(jsonPayload: jsonPayload)
             if let resolvedData = resolved.data(using: .utf8) {
+                if let dict = try? JSONSerialization.jsonObject(with: resolvedData, options: []) as? [String: Any] {
+                    self.currentJsonMessage = dict
+                }
                 let (node, newErrors) = try FeatherRenderPayload.decode(resolvedData)
                 root = node
                 errors = newErrors
@@ -263,6 +273,15 @@ final class FeatherDevClient: NSObject, ObservableObject {
             let manifestURL = baseURL.appending(path: "bundle/manifest")
             let (manifestData, _) = try await URLSession.shared.data(from: manifestURL)
             let manifest = try JSONDecoder().decode(BundleManifest.self, from: manifestData)
+
+            // ─── Feature 1: Cryptographic Bundle Verification & Code Signing ───
+            let signature = manifest.signature ?? ""
+            let manifestJSON = String(data: manifestData, encoding: .utf8) ?? "{}"
+            let hostPublicKeyB64 = "MCowBQYDK2VwAyEAi43tq2sB7k4n1xT3M8vR2fG0wW6eW+0v4eN9gDqK4sQ=" // Replace with your public key from .feather/public_key.txt
+            
+            if signature.isEmpty || !verifyManifestSignature(manifestJson: manifestJSON, signatureB64: signature, publicKeyB64: hostPublicKeyB64) {
+                throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey: "CRYPTOGRAPHIC SECURE BOOT FAULT"])
+            }
 
             guard manifest.sdkVersion == "1.0.0" else {
                 root = .text(id: UUID().uuidString, text: "Unsupported SDK: \(manifest.sdkVersion)")
@@ -295,6 +314,8 @@ final class FeatherDevClient: NSObject, ObservableObject {
                 if let wasmData = try? await tryFetchCompressed(url: wasmURL) {
                     try? runtime.loadWasm(wasmBytes: [UInt8](wasmData))
                 }
+            }
+
             let renderPath = manifest.render.path
             let mpPath = renderPath.replacingOccurrences(of: ".json", with: ".mp")
             let mpURL = baseURL.appending(path: "bundle/artifact").appending(path: mpPath)
@@ -326,6 +347,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
                     } else {
                         let resolved = runtime.resolveStateTextNodes(jsonPayload: finalRenderPayload)
                         if let resolvedData = resolved.data(using: .utf8) {
+                            if let dict = try? JSONSerialization.jsonObject(with: resolvedData, options: []) as? [String: Any] {
+                                self.currentJsonMessage = dict
+                            }
                             let (node, newErrors) = try FeatherRenderPayload.decode(resolvedData)
                             self.root = node
                             self.errors = newErrors + missingModules
@@ -334,15 +358,19 @@ final class FeatherDevClient: NSObject, ObservableObject {
                     isConnected = true
                 }
             }
-
-                        allErrors.append("Missing required module (from manifest): \(name)")
-                    }
-                    errors = allErrors
-                }
-            }
         } catch {
-            root = .text(id: UUID().uuidString, text: "Bundle fetch failed: \(error.localizedDescription)")
-            errors = [error.localizedDescription]
+            let nsError = error as NSError
+            if nsError.localizedDescription == "CRYPTOGRAPHIC SECURE BOOT FAULT" {
+                root = .text(id: UUID().uuidString, text: "CRYPTOGRAPHIC SECURE BOOT FAULT")
+                errors = [
+                    "CRITICAL SECURITY ALERT: CRYPTOGRAPHIC SECURE BOOT FAULT",
+                    "The dynamic bundle signature could not be verified against the host public key.",
+                    "Execution halted to prevent unauthorized remote code execution."
+                ]
+            } else {
+                root = .text(id: UUID().uuidString, text: "Bundle fetch failed: \(error.localizedDescription)")
+                errors = [error.localizedDescription]
+            }
         }
     }
 
@@ -428,6 +456,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
 
     private func registerOfficialModules() {
         moduleRegistry.register(DeviceModule())
+        moduleRegistry.register(DeviceInfoModule())
         moduleRegistry.register(NetworkModule())
         moduleRegistry.register(StorageModule())
         moduleRegistry.register(NavigationModule(onNavigateAction: self.sendAction))
@@ -442,6 +471,13 @@ final class FeatherDevClient: NSObject, ObservableObject {
         moduleRegistry.register(ReflectionModule())
         moduleRegistry.register(CameraModuleIOS())
         moduleRegistry.register(MapsModuleIOS())
+
+        // Load dynamic third-party plugins
+        let dynamicPlugins = FeatherPluginLoader.loadPlugins()
+        for plugin in dynamicPlugins {
+            moduleRegistry.register(plugin)
+            print("FeatherPluginLoader: Registered dynamic plugin: \(plugin.name)")
+        }
 
         // Register with Rust runtime
 
@@ -489,10 +525,30 @@ final class FeatherDevClient: NSObject, ObservableObject {
                             if let path = json["path"] as? String {
                                 self.fetchWasmAndReload(path: path)
                             }
+                        } else if type == "patch" {
+                            if var activeJson = self.currentJsonMessage,
+                               let patchesArray = json["patches"] as? [[String: Any]] {
+                                for patch in patchesArray {
+                                    self.applySinglePatch(to: &activeJson, patch: patch)
+                                }
+                                self.currentJsonMessage = activeJson
+                                if let resolvedData = try? JSONSerialization.data(withJSONObject: activeJson, options: []),
+                                   let jsonString = String(data: resolvedData, encoding: .utf8) {
+                                    let resolved = self.runtime.resolveStateTextNodes(jsonPayload: jsonString)
+                                    if let finalData = resolved.data(using: .utf8),
+                                       let (node, newErrors) = try? FeatherRenderPayload.decode(finalData) {
+                                        self.root = node
+                                        self.errors = newErrors
+                                    }
+                                }
+                            }
                         } else {
                             let resolved = self.runtime.resolveStateTextNodes(jsonPayload: payload)
                             if let resolvedData = resolved.data(using: .utf8),
                                let (node, newErrors) = try? FeatherRenderPayload.decode(resolvedData) {
+                                if let dict = try? JSONSerialization.jsonObject(with: resolvedData, options: []) as? [String: Any] {
+                                    self.currentJsonMessage = dict
+                                }
                                 self.root = node
                                 self.errors = newErrors
                             }
@@ -542,6 +598,152 @@ final class FeatherDevClient: NSObject, ObservableObject {
             Task { @MainActor in
                 self?.connectWebSocket()
             }
+        }
+    }
+
+    // ─── Incremental Tree Diffing / Patch Mutations (Feature 3) ───
+
+    private func parsePatchValue(_ valueStr: String) -> Any {
+        if valueStr == "null" || valueStr.isEmpty {
+            return NSNull()
+        }
+        if valueStr.hasPrefix("\"") && valueStr.hasSuffix("\"") {
+            return String(valueStr.dropFirst().dropLast())
+        }
+        if valueStr == "true" {
+            return true
+        }
+        if valueStr == "false" {
+            return false
+        }
+        if let intVal = Int(valueStr) {
+            return intVal
+        }
+        if let doubleVal = Double(valueStr) {
+            return doubleVal
+        }
+        if valueStr.hasPrefix("{") {
+            if let data = valueStr.data(using: .utf8),
+               let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                return dict
+            }
+        }
+        if valueStr.hasPrefix("[") {
+            if let data = valueStr.data(using: .utf8),
+               let arr = try? JSONSerialization.jsonObject(with: data, options: []) as? [Any] {
+                return arr
+            }
+        }
+        return valueStr
+    }
+
+    private func modifyNode(in root: inout [String: Any], path: [Int], modifier: (inout [String: Any]) -> Void) {
+        if path.isEmpty {
+            if var rootNode = root["root"] as? [String: Any] {
+                modifier(&rootNode)
+                root["root"] = rootNode
+            }
+            return
+        }
+        
+        func walk(node: inout [String: Any], pathSlice: ArraySlice<Int>) {
+            if pathSlice.isEmpty {
+                modifier(&node)
+                return
+            }
+            
+            guard var children = node["children"] as? [[String: Any]] else { return }
+            let idx = pathSlice.first!
+            guard idx >= 0 && idx < children.count else { return }
+            
+            var targetChild = children[idx]
+            walk(node: &targetChild, pathSlice: pathSlice.dropFirst())
+            children[idx] = targetChild
+            node["children"] = children
+        }
+        
+        if var rootNode = root["root"] as? [String: Any] {
+            walk(node: &rootNode, pathSlice: ArraySlice(path))
+            root["root"] = rootNode
+        }
+    }
+
+    private func applySinglePatch(to root: inout [String: Any], patch: [String: Any]) {
+        guard let pathArray = patch["path"] as? [Any] else { return }
+        let path = pathArray.compactMap { ($0 as? NSNumber)?.intValue ?? ($0 as? Int) }
+        guard let op = patch["op"] as? String else { return }
+        let prop = patch["property"] as? String ?? ""
+        let valueStr = patch["value"] as? String ?? ""
+
+        switch op {
+        case "Replace":
+            if path.isEmpty {
+                if let data = valueStr.data(using: .utf8),
+                   let newRoot = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                    root["root"] = newRoot
+                }
+            } else {
+                let parentPath = Array(path.dropLast())
+                guard let lastIdx = path.last else { return }
+                modifyNode(in: &root, path: parentPath) { parent in
+                    guard var children = parent["children"] as? [[String: Any]] else { return }
+                    if lastIdx >= 0 && lastIdx < children.count {
+                        if let data = valueStr.data(using: .utf8),
+                           let newChild = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                            children[lastIdx] = newChild
+                            parent["children"] = children
+                        }
+                    }
+                }
+            }
+        case "UpdateProperty":
+            if prop.isEmpty { return }
+            modifyNode(in: &root, path: path) { target in
+                let parsedValue = self.parsePatchValue(valueStr)
+                if prop.hasPrefix("style.") {
+                    let styleKey = String(prop.dropFirst(6))
+                    var style = target["style"] as? [String: Any] ?? [:]
+                    if parsedValue is NSNull {
+                        style.removeValue(forKey: styleKey)
+                    } else {
+                        style[styleKey] = parsedValue
+                    }
+                    target["style"] = style
+                } else if prop == "style" {
+                    if parsedValue is NSNull {
+                        target.removeValue(forKey: "style")
+                    } else {
+                        target["style"] = parsedValue
+                    }
+                } else {
+                    if parsedValue is NSNull {
+                        target.removeValue(forKey: prop)
+                    } else {
+                        target[prop] = parsedValue
+                    }
+                }
+            }
+        case "InsertChild":
+            modifyNode(in: &root, path: path) { parent in
+                var children = parent["children"] as? [[String: Any]] ?? []
+                let index = Int(prop) ?? children.count
+                if let data = valueStr.data(using: .utf8),
+                   let childJson = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                    let targetIndex = max(0, min(index, children.count))
+                    children.insert(childJson, at: targetIndex)
+                    parent["children"] = children
+                }
+            }
+        case "RemoveChild":
+            modifyNode(in: &root, path: path) { parent in
+                guard var children = parent["children"] as? [[String: Any]] else { return }
+                if let index = Int(prop), index >= 0 && index < children.count {
+                    children.remove(at: index)
+                    parent["children"] = children
+                }
+            }
+        default:
+            break
         }
     }
 }

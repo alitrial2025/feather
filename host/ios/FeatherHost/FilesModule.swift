@@ -15,6 +15,11 @@ class FilesModule: FeatherModule {
         let path = payload["path"] as? String ?? ""
         let fileUrl = docsUrl.appendingPathComponent(path)
         
+        // Guard against directory traversal attacks escaping the document directory sandbox
+        if !fileUrl.standardized.path.hasPrefix(docsUrl.standardized.path) {
+            return false
+        }
+        
         switch method {
         case "write":
             let content = payload["content"] as? String ?? ""

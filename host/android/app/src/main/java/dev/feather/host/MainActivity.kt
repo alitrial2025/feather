@@ -21,6 +21,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.json.JSONArray
 import org.json.JSONObject
 import uniffi.feather_core.AppRuntime
 
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
     private val moduleRegistry = ModuleRegistry()
     private var devSocket: WebSocket? = null
     private val runtime = AppRuntime()
+    private var currentJsonMessage: JSONObject? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,7 +89,10 @@ class MainActivity : ComponentActivity() {
                                     node = rootNode,
                                     onAction = ::sendAction,
                                 )
-                                DiagnosticsOverlay(errors = diagnosticErrors)
+                                DiagnosticsOverlay(
+                                    errors = diagnosticErrors,
+                                    onRetry = { resetAndConnect() }
+                                )
                                 
                                 // Floating FAB to go back to launcher
                                 FloatingActionButton(
@@ -161,7 +166,16 @@ class MainActivity : ComponentActivity() {
                 runtime.loadWasm(wasmBytes.toList())
             }
 
-            // 2. Try Binary IR (FlexBuffers)
+            // 2. Try FlatBuffers (zero-copy) first
+            val flatIr = runCatching { assets.open("feather/app.feather.fb").readBytes() }.getOrNull()
+            if (flatIr != null) {
+                val (root, errors) = parseFlatBuffersMessage(flatIr, moduleRegistry)
+                rootNode = root
+                diagnosticErrors = errors
+                return true
+            }
+
+            // 3. Try Binary IR (FlexBuffers)
             val binaryIr = runCatching { assets.open("feather/app.feather.fxb").readBytes() }.getOrNull()
             if (binaryIr != null) {
                 val (root, errors) = parseFlexBuffersMessage(binaryIr, moduleRegistry)
@@ -170,10 +184,11 @@ class MainActivity : ComponentActivity() {
                 return true
             }
 
-            // 3. Try JSON IR fallback
+            // 4. Try JSON IR fallback
             val jsonIr = runCatching { assets.open("feather/app.feather.json").bufferedReader().use { it.readText() } }.getOrNull()
             if (jsonIr != null) {
                 val resolved = runtime.resolveStateTextNodes(jsonIr)
+                currentJsonMessage = JSONObject(resolved)
                 val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
                 rootNode = root
                 diagnosticErrors = errors
@@ -228,23 +243,6 @@ class MainActivity : ComponentActivity() {
         moduleRegistry.onActivityResult(requestCode, resultCode, data)
     }
 
-    private fun loadLocalBundle() {
-        try {
-            val hasLocalBundle = assets.list("feather")?.contains("app.feather.json") == true
-            if (hasLocalBundle) {
-                assets.open("feather/app.feather.json").bufferedReader().use { reader ->
-                    val renderPayload = reader.readText()
-                    val resolved = runtime.resolveStateTextNodes(renderPayload)
-                    val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
-                    rootNode = root
-                    diagnosticErrors = errors
-                }
-            }
-        } catch (e: Exception) {
-            diagnosticErrors = listOf("Failed to load local bundle: ${e.message}")
-        }
-    }
-
     private fun startCorePolling() {
         CoroutineScope(Dispatchers.Main).launch {
             while (true) {
@@ -262,6 +260,7 @@ class MainActivity : ComponentActivity() {
                                 diagnosticErrors = errors
                             } else {
                                 val resolved = runtime.resolveStateTextNodes(renderTree)
+                                currentJsonMessage = JSONObject(resolved)
                                 val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
                                 rootNode = root
                             }
@@ -313,8 +312,19 @@ class MainActivity : ComponentActivity() {
                     } else if (json?.optString("type") == "hot-reload-wasm") {
                         val path = json.getString("path")
                         fetchWasmAndReload(path)
+                    } else if (json?.optString("type") == "patch") {
+                        val patchesArray = json.getJSONArray("patches")
+                        val activeJson = currentJsonMessage
+                        if (activeJson != null) {
+                            applyPatches(activeJson, patchesArray)
+                            val resolved = runtime.resolveStateTextNodes(activeJson.toString())
+                            val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
+                            rootNode = root
+                            diagnosticErrors = errors
+                        }
                     } else {
                         val resolved = runtime.resolveStateTextNodes(text)
+                        currentJsonMessage = JSONObject(resolved)
                         val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
                         rootNode = root
                         diagnosticErrors = errors
@@ -361,6 +371,14 @@ class MainActivity : ComponentActivity() {
                     response.body?.string().orEmpty()
                 }
                 val manifest = JSONObject(manifestPayload)
+
+                // ─── Feature 1: Cryptographic Bundle Verification & Code Signing ───
+                val signature = manifest.optString("signature", "")
+                val hostPublicKeyB64 = "MCowBQYDK2VwAyEAi43tq2sB7k4n1xT3M8vR2fG0wW6eW+0v4eN9gDqK4sQ=" // Replace with your public key from .feather/public_key.txt
+                
+                if (signature.isEmpty() || !uniffi.feather_core.verifyManifestSignature(manifestPayload, signature, hostPublicKeyB64)) {
+                    throw SecurityException("CRYPTOGRAPHIC SECURE BOOT FAULT")
+                }
                 
                 val modulesArray = manifest.optJSONArray("modules")
                 val requiredModules = mutableListOf<uniffi.feather_core.BundleModule>()
@@ -395,24 +413,36 @@ class MainActivity : ComponentActivity() {
 
                 val renderPath = manifest.getJSONObject("render").getString("path")
                 val binaryPath = renderPath.replace(".json", ".fxb")
+                val flatPath = renderPath.replace(".json", ".fb")
                 
-                // Try binary IR first
-                val fbBytes = tryFetchCompressed("$devServerBaseUrl/bundle/artifact/$binaryPath")
-                if (fbBytes != null) {
-                    val (root, errors) = parseFlexBuffersMessage(fbBytes, moduleRegistry)
+                // Try FlatBuffers first
+                val flatBytes = tryFetchCompressed("$devServerBaseUrl/bundle/artifact/$flatPath")
+                if (flatBytes != null) {
+                    val (root, errors) = parseFlatBuffersMessage(flatBytes, moduleRegistry)
                     CoroutineScope(Dispatchers.Main).launch {
                         rootNode = root
                         diagnosticErrors = errors + missingModules
                     }
                 } else {
-                    // Fallback to JSON
-                    renderPayload = tryFetchCompressedString("$devServerBaseUrl/bundle/artifact/$renderPath")
-                    if (renderPayload != null) {
+                    // Try FlexBuffers binary IR second
+                    val fbBytes = tryFetchCompressed("$devServerBaseUrl/bundle/artifact/$binaryPath")
+                    if (fbBytes != null) {
+                        val (root, errors) = parseFlexBuffersMessage(fbBytes, moduleRegistry)
                         CoroutineScope(Dispatchers.Main).launch {
-                            val resolved = runtime.resolveStateTextNodes(renderPayload!!)
-                            val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
                             rootNode = root
                             diagnosticErrors = errors + missingModules
+                        }
+                    } else {
+                        // Fallback to JSON
+                        renderPayload = tryFetchCompressedString("$devServerBaseUrl/bundle/artifact/$renderPath")
+                        if (renderPayload != null) {
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val resolved = runtime.resolveStateTextNodes(renderPayload!!)
+                                currentJsonMessage = JSONObject(resolved)
+                                val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
+                                rootNode = root
+                                diagnosticErrors = errors + missingModules
+                            }
                         }
                     }
                 }
@@ -424,6 +454,7 @@ class MainActivity : ComponentActivity() {
                         val renderTree = runtime.renderWasm()
                         if (renderTree != null) {
                             val resolved = runtime.resolveStateTextNodes(renderTree)
+                            currentJsonMessage = JSONObject(resolved)
                             val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
                             rootNode = root
                         }
@@ -431,8 +462,17 @@ class MainActivity : ComponentActivity() {
                 }
             }.onFailure { error ->
                 CoroutineScope(Dispatchers.Main).launch {
-                    rootNode = FeatherNode.TextNode("Bundle fetch failed: ${error.message}")
-                    diagnosticErrors = listOf(error.message ?: "Unknown error")
+                    if (error is SecurityException && error.message == "CRYPTOGRAPHIC SECURE BOOT FAULT") {
+                        rootNode = FeatherNode.TextNode("CRYPTOGRAPHIC SECURE BOOT FAULT")
+                        diagnosticErrors = listOf(
+                            "CRITICAL SECURITY ALERT: CRYPTOGRAPHIC SECURE BOOT FAULT",
+                            "The dynamic bundle signature could not be verified against the host public key.",
+                            "Execution halted to prevent unauthorized remote code execution."
+                        )
+                    } else {
+                        rootNode = FeatherNode.TextNode("Bundle fetch failed: ${error.message}")
+                        diagnosticErrors = listOf(error.message ?: "Unknown error")
+                    }
                 }
             }
         }
@@ -508,16 +548,29 @@ class MainActivity : ComponentActivity() {
         moduleRegistry.register(MediaModule())
         moduleRegistry.register(WebViewModule())
         moduleRegistry.register(DeviceModule())
+        moduleRegistry.register(DeviceInfoModule())
         moduleRegistry.register(NavigationModule(::sendAction))
         moduleRegistry.register(FilesModule())
-        moduleRegistry.register(LocationModule())
-        moduleRegistry.register(AuthModule())
-        moduleRegistry.register(NotificationsModule())
-        moduleRegistry.register(MapsModule())
-        moduleRegistry.register(PaymentsModule())
+        // Stub modules - disabled for v1 release (documented as coming soon in ROADMAP)
+        // moduleRegistry.register(LocationModule())
+        // moduleRegistry.register(AuthModule())
+        // moduleRegistry.register(NotificationsModule())
+        // moduleRegistry.register(MapsModule())
+        // moduleRegistry.register(PaymentsModule())
         moduleRegistry.register(ReflectionModule())
         moduleRegistry.register(dev.feather.modules.camera.CameraModuleAndroid())
         moduleRegistry.register(dev.feather.modules.maps.MapsModuleAndroid())
+
+        // Load and register third-party plugins dynamically
+        try {
+            val plugins = PluginLoader.loadPlugins(applicationContext)
+            plugins.forEach { plugin ->
+                moduleRegistry.register(plugin)
+                android.util.Log.i("FeatherPlugin", "Registered dynamic plugin: ${plugin.name}")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FeatherPlugin", "Error loading dynamic plugins", e)
+        }
     }
 
     private fun moduleContext(): FeatherModuleContext {
@@ -531,5 +584,151 @@ class MainActivity : ComponentActivity() {
     private fun sendStateAssignment(key: String, value: String) {
         val escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
         sendAction("$key=\"$escaped\"", null)
+    }
+
+    // ─── Incremental Tree Diffing / Patch Mutations (Feature 3) ───
+
+    private data class NodeLocation(val parent: JSONObject?, val target: JSONObject, val index: Int)
+
+    private fun findNodeByPath(root: JSONObject, path: List<Int>): JSONObject? {
+        var current: JSONObject = root.optJSONObject("root") ?: return null
+        for (index in path) {
+            val children = current.optJSONArray("children") ?: return null
+            if (index < 0 || index >= children.length()) {
+                return null
+            }
+            current = children.optJSONObject(index) ?: return null
+        }
+        return current
+    }
+
+    private fun findNodeLocation(root: JSONObject, path: List<Int>): NodeLocation? {
+        val rootNode = root.optJSONObject("root") ?: return null
+        if (path.isEmpty()) {
+            return NodeLocation(null, rootNode, -1)
+        }
+        var current = rootNode
+        for (i in 0 until path.size - 1) {
+            val idx = path[i]
+            val children = current.optJSONArray("children") ?: return null
+            if (idx < 0 || idx >= children.length()) return null
+            current = children.optJSONObject(idx) ?: return null
+        }
+        val lastIdx = path.last()
+        val children = current.optJSONArray("children") ?: return null
+        if (lastIdx < 0 || lastIdx >= children.length()) return null
+        val target = children.optJSONObject(lastIdx) ?: return null
+        return NodeLocation(current, target, lastIdx)
+    }
+
+    private fun parsePatchValue(valueStr: String): Any {
+        if (valueStr == "null" || valueStr.isEmpty()) return JSONObject.NULL
+        if (valueStr.startsWith("\"") && valueStr.endsWith("\"")) {
+            return valueStr.substring(1, valueStr.length - 1)
+        }
+        if (valueStr == "true") return true
+        if (valueStr == "false") return false
+        val intVal = valueStr.toIntOrNull()
+        if (intVal != null) return intVal
+        val doubleVal = valueStr.toDoubleOrNull()
+        if (doubleVal != null) return doubleVal
+        
+        if (valueStr.startsWith("{")) {
+            try { return JSONObject(valueStr) } catch(e: Exception) {}
+        }
+        if (valueStr.startsWith("[")) {
+            try { return JSONArray(valueStr) } catch(e: Exception) {}
+        }
+        return valueStr
+    }
+
+    private fun insertIntoJsonArray(array: JSONArray, index: Int, value: Any) {
+        val temp = JSONArray()
+        val targetIndex = index.coerceIn(0, array.length())
+        for (i in 0 until targetIndex) {
+            temp.put(array.get(i))
+        }
+        temp.put(value)
+        for (i in targetIndex until array.length()) {
+            temp.put(array.get(i))
+        }
+        while (array.length() > 0) {
+            array.remove(0)
+        }
+        for (i in 0 until temp.length()) {
+            array.put(temp.get(i))
+        }
+    }
+
+    private fun applyPatches(root: JSONObject, patches: JSONArray) {
+        for (i in 0 until patches.length()) {
+            val patch = patches.getJSONObject(i)
+            val pathArray = patch.getJSONArray("path")
+            val path = List(pathArray.length()) { pathArray.getInt(it) }
+            val op = patch.getString("op")
+            val prop = patch.optString("property", "")
+            val valueStr = patch.optString("value", "")
+
+            when (op) {
+                "Replace" -> {
+                    if (path.isEmpty()) {
+                        val newRoot = JSONObject(valueStr)
+                        root.put("root", newRoot)
+                    } else {
+                        val location = findNodeLocation(root, path)
+                        if (location != null && location.parent != null) {
+                            val children = location.parent.getJSONArray("children")
+                            children.put(location.index, JSONObject(valueStr))
+                        }
+                    }
+                }
+                "UpdateProperty" -> {
+                    val target = findNodeByPath(root, path)
+                    if (target != null && prop.isNotEmpty()) {
+                        val parsedValue = parsePatchValue(valueStr)
+                        if (prop.startsWith("style.")) {
+                            val styleKey = prop.substring(6)
+                            val style = target.optJSONObject("style") ?: JSONObject().also { target.put("style", it) }
+                            if (parsedValue == JSONObject.NULL) {
+                                style.remove(styleKey)
+                            } else {
+                                style.put(styleKey, parsedValue)
+                            }
+                        } else if (prop == "style") {
+                            if (parsedValue == JSONObject.NULL) {
+                                target.remove("style")
+                            } else {
+                                target.put("style", parsedValue)
+                            }
+                        } else {
+                            if (parsedValue == JSONObject.NULL) {
+                                target.remove(prop)
+                            } else {
+                                target.put(prop, parsedValue)
+                            }
+                        }
+                    }
+                }
+                "InsertChild" -> {
+                    val parent = findNodeByPath(root, path)
+                    if (parent != null) {
+                        val children = parent.optJSONArray("children") ?: JSONArray().also { parent.put("children", it) }
+                        val index = prop.toIntOrNull() ?: children.length()
+                        val childJson = JSONObject(valueStr)
+                        insertIntoJsonArray(children, index, childJson)
+                    }
+                }
+                "RemoveChild" -> {
+                    val parent = findNodeByPath(root, path)
+                    if (parent != null) {
+                        val children = parent.optJSONArray("children")
+                        val index = prop.toIntOrNull()
+                        if (children != null && index != null && index >= 0 && index < children.length()) {
+                            children.remove(index)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

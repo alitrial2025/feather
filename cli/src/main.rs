@@ -18,7 +18,7 @@ use server::run_server;
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    match cli.command {
+    let result = match cli.command {
         Commands::Start { project, host, port, tunnel } => {
             let config = match DevServerConfig::new(project, host, port, tunnel) {
                 Ok(config) => config,
@@ -28,6 +28,7 @@ async fn main() {
                 }
             };
             run_server(config).await;
+            Ok(())
         }
         Commands::Install { project, module } => commands::install_module(project, module, "latest".to_string()).await,
         Commands::Uninstall { project, module } => commands::uninstall_module(project, module).await,
@@ -37,5 +38,10 @@ async fn main() {
         Commands::Init { name } => commands::init_project(name).await,
         Commands::Build { project, target } => commands::build_production(project, target).await,
         Commands::CompileWasm { project } => commands::compile_wasm(project).await,
+    };
+
+    if let Err(error) = result {
+        eprintln!("❌ Error: {error}");
+        std::process::exit(1);
     }
 }

@@ -23,17 +23,17 @@ pub fn parse_fui(source: &str) -> Result<FeatherUI, String> {
     let mut states = HashMap::new();
     let mut root = None;
 
-    let mut current_pairs = pairs.into_iter().next().unwrap().into_inner();
+    let mut current_pairs = pairs.into_iter().next().ok_or("No root pair found")?.into_inner();
     while let Some(pair) = current_pairs.next() {
         match pair.as_rule() {
             Rule::import_stmt => {
-                let path = pair.into_inner().next().unwrap().as_str().trim_matches('"').to_string();
+                let path = pair.into_inner().next().ok_or("Import statement missing path")?.as_str().trim_matches('"').to_string();
                 imports.push(path);
             }
             Rule::state_stmt => {
                 let mut inner = pair.into_inner();
-                let name = inner.next().unwrap().as_str().to_string();
-                let expr = evaluate_expression(inner.next().unwrap());
+                let name = inner.next().ok_or("State statement missing identifier")?.as_str().to_string();
+                let expr = evaluate_expression(inner.next().ok_or("State statement missing value expression")?);
                 states.insert(name, expr);
             }
             Rule::widget => {
@@ -431,6 +431,23 @@ mod tests {
             assert_eq!(text, "Result: 30");
         } else {
             panic!("Expected folded Text");
+        }
+    }
+
+    #[test]
+    fn test_dot_notation_and_functions() {
+        let source = r#"
+            state testVal = min(state.user.age, 18)
+            Text("Age: " + state.user.age)
+        "#;
+        let fui = parse_fui(source).unwrap();
+        let state_val = fui.states.get("testVal").unwrap();
+        assert!(state_val.starts_with("min"));
+        assert!(state_val.contains("state.user.age"));
+        if let WidgetNode::Text { .. } = fui.root {
+            // Success
+        } else {
+            panic!("Expected Text widget");
         }
     }
 }

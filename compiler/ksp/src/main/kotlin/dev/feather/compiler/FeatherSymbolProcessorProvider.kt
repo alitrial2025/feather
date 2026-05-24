@@ -8,6 +8,10 @@ import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.processing.SymbolProcessorProvider
 import com.google.devtools.ksp.symbol.KSAnnotated
+import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.KSFunctionDeclaration
+import com.google.devtools.ksp.symbol.KSVisitorVoid
+import com.google.devtools.ksp.symbol.FileLocation
 import java.io.File
 
 class FeatherSymbolProcessorProvider : SymbolProcessorProvider {
@@ -30,22 +34,87 @@ private class FeatherSymbolProcessor(
             return emptyList()
         }
 
-        val appFile = resolver.getAllFiles()
-            .firstOrNull { file ->
-                val source = runCatching { File(file.filePath).readText() }.getOrNull()
-                source?.contains("FeatherApp") == true && source.contains("override fun render()")
-            }
+        // Use the KSP Visitor to locate the FeatherApp class declaration
+        val visitor = FeatherAppVisitor(logger)
+        resolver.getAllFiles().forEach { file ->
+            file.accept(visitor, Unit)
+        }
 
-        if (appFile == null) {
-            logger.warn("Feather KSP did not find a FeatherApp render function.")
+        val renderFunc = visitor.renderFunction
+        val appClass = visitor.appClass
+
+        if (appClass == null || renderFunc == null) {
+            logger.warn("Feather KSP did not find a FeatherApp class or abstract render() override.")
             generated = true
             return emptyList()
         }
 
-        val source = File(appFile.filePath).readText()
-        val payload = buildRenderPayload(source)
+        val location = renderFunc.location
+        if (location !is FileLocation) {
+            logger.error("Could not determine source file location for FeatherApp.")
+            generated = true
+            return emptyList()
+        }
+
+        val filePath = location.filePath
+        val sourceFile = File(filePath)
+        if (!sourceFile.exists()) {
+            logger.error("Source file does not exist: $filePath")
+            generated = true
+            return emptyList()
+        }
+
+        val source = sourceFile.readText()
+        
+        // Find the render function's body inside the source code using the line number
+        val lines = source.lines()
+        val startLineIdx = (location.lineNumber - 1).coerceIn(0, lines.size - 1)
+        
+        // Construct the source starting from the render signature line to extract the body
+        val renderStartOffset = lines.take(startLineIdx).joinToString("\n").length + 1
+        val remainingSource = source.substring(renderStartOffset)
+        
+        // Find opening brace '{' and match the closing brace '}'
+        val openBraceIdx = remainingSource.indexOf('{')
+        if (openBraceIdx < 0) {
+            logger.error("Could not find body block for render() function.")
+            generated = true
+            return emptyList()
+        }
+        
+        var depth = 0
+        var closeBraceIdx = -1
+        for (idx in openBraceIdx until remainingSource.length) {
+            when (remainingSource[idx]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        closeBraceIdx = idx
+                        break
+                    }
+                }
+            }
+        }
+        
+        if (closeBraceIdx < 0) {
+            logger.error("Malformed render() function body: missing matching '}'")
+            generated = true
+            return emptyList()
+        }
+        
+        val renderBody = remainingSource.substring(openBraceIdx + 1, closeBraceIdx)
+        val payload = buildRenderPayload(renderBody)
+        
+        val containingFile = renderFunc.containingFile
+        if (containingFile == null) {
+            logger.error("Could not resolve containing file for render function symbol.")
+            generated = true
+            return emptyList()
+        }
+
         codeGenerator.createNewFile(
-            dependencies = Dependencies(aggregating = false, appFile),
+            dependencies = Dependencies(aggregating = false, containingFile),
             packageName = "feather",
             fileName = "app.feather",
             extensionName = "json",
@@ -56,6 +125,33 @@ private class FeatherSymbolProcessor(
 
         generated = true
         return emptyList()
+    }
+}
+
+private class FeatherAppVisitor(private val logger: KSPLogger) : KSVisitorVoid() {
+    var renderFunction: KSFunctionDeclaration? = null
+    var appClass: KSClassDeclaration? = null
+
+    override fun visitFile(file: com.google.devtools.ksp.symbol.KSFile, data: Unit) {
+        file.declarations.forEach { it.accept(this, data) }
+    }
+
+    override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
+        val isApp = classDeclaration.superTypes.any { typeRef ->
+            val resolved = runCatching { typeRef.resolve() }.getOrNull()
+            val name = resolved?.declaration?.qualifiedName?.asString()
+            name == "dev.feather.sdk.FeatherApp" || name == "FeatherApp"
+        }
+        
+        if (isApp) {
+            appClass = classDeclaration
+            classDeclaration.declarations.forEach { decl ->
+                if (decl is KSFunctionDeclaration && decl.simpleName.asString() == "render") {
+                    renderFunction = decl
+                }
+            }
+        }
+        classDeclaration.declarations.forEach { it.accept(this, data) }
     }
 }
 

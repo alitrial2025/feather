@@ -144,6 +144,21 @@ pub fn build_bundle(
                 fs::write(config.bundle_path.join("app.feather.mp"), &mp_bytes)
                     .map_err(|error| format!("Could not write MessagePack artifact: {error}"))?;
             }
+
+            // FlatBuffers zero-copy binary serialization
+            match feather_core::bundle::flat_serializer::json_to_flatbuffer(&render_payload) {
+                Ok(fb_bytes) => {
+                    fs::write(config.bundle_path.join("app.feather.fb"), &fb_bytes)
+                        .map_err(|error| format!("Could not write FlatBuffers artifact: {error}"))?;
+                    if let Ok(compressed_fb) = compress_bytes(&fb_bytes) {
+                        fs::write(config.bundle_path.join("app.feather.fb.gz"), &compressed_fb)
+                            .map_err(|error| format!("Could not write compressed FlatBuffers artifact: {error}"))?;
+                    }
+                }
+                Err(e) => {
+                    println!("Failed to serialize FlatBuffers: {}", e);
+                }
+            }
         }
     }
 
@@ -155,6 +170,35 @@ pub fn build_bundle(
     let modules_payload = "[]\n";
     fs::write(config.bundle_path.join("modules.json"), modules_payload)
         .map_err(|error| format!("Could not write modules artifact: {error}"))?;
+
+    // Key Generation Setup and manifest signing
+    let dot_feather = config.project_path.join(".feather");
+    let private_key_path = dot_feather.join("private_key.der");
+    let public_key_path = dot_feather.join("public_key.txt");
+    fs::create_dir_all(&dot_feather).ok();
+
+    let key_pair = if private_key_path.exists() {
+        let key_bytes = fs::read(&private_key_path)
+            .map_err(|e| format!("Failed to read private key: {e}"))?;
+        ring::signature::Ed25519KeyPair::from_pkcs8(&key_bytes)
+            .map_err(|e| format!("Failed to parse private key: {e}"))?
+    } else {
+        let rng = ring::rand::SystemRandom::new();
+        let pkcs8_bytes = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng)
+            .map_err(|e| format!("Failed to generate private key: {e}"))?;
+        fs::write(&private_key_path, pkcs8_bytes.as_ref())
+            .map_err(|e| format!("Failed to write private key: {e}"))?;
+        let key_pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref())
+            .map_err(|e| format!("Failed to parse generated key: {e}"))?;
+        use base64::Engine as _;
+        let pub_key_b64 = base64::engine::general_purpose::STANDARD.encode(key_pair.public_key().as_ref());
+        fs::write(&public_key_path, &pub_key_b64)
+            .map_err(|e| format!("Failed to write public key: {e}"))?;
+        println!("🔑 Generated a new Ed25519 keypair for code signing!");
+        println!("🔑 Public Key (Base64): {}", pub_key_b64);
+        println!("🔑 Please hardcode this public key in your Android/iOS host applications.");
+        key_pair
+    };
 
     let render_artifact = artifact_for("app.feather.json", render_payload.as_bytes());
     let dependencies = discover_dependencies(config)?;
@@ -199,12 +243,25 @@ pub fn build_bundle(
             })
             .collect(),
         platform_overrides: config.manifest.platform_overrides.clone(),
+        signature: None,
     };
-    let manifest = with_delta(manifest, previous_manifest);
+    let mut manifest = with_delta(manifest, previous_manifest);
+    manifest.signature = None;
+
+    // Sign the manifest JSON bytes (with signature set to None)
+    let manifest_val = serde_json::to_value(&manifest)
+        .map_err(|error| format!("Could not convert bundle manifest to value: {error}"))?;
+    let manifest_bytes = serde_json::to_vec(&manifest_val)
+        .map_err(|error| format!("Could not serialize bundle manifest for signing: {error}"))?;
+
+    let signature_bytes = key_pair.sign(&manifest_bytes);
+    use base64::Engine as _;
+    let signature_b64 = base64::engine::general_purpose::STANDARD.encode(signature_bytes.as_ref());
+    manifest.signature = Some(signature_b64);
 
     let manifest_payload = serde_json::to_string_pretty(&manifest)
         .map_err(|error| format!("Could not serialize bundle manifest: {error}"))?;
-    fs::write(config.bundle_path.join("manifest.json"), manifest_payload)
+    fs::write(config.bundle_path.join("manifest.json"), &manifest_payload)
         .map_err(|error| format!("Could not write bundle manifest: {error}"))?;
 
     Ok(BundleBuild {

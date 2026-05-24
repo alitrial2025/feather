@@ -1,3 +1,6 @@
+pub mod flat_serializer;
+pub mod diff;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -25,6 +28,8 @@ pub struct BundleManifest {
     pub deep_links: Vec<DeepLink>,
     #[serde(default)]
     pub platform_overrides: HashMap<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Default)]

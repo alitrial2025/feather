@@ -7,27 +7,26 @@ use std::sync::Arc;
 use feather_core::AppRuntime;
 use serde::Serialize;
 
-pub async fn install_module(project_path: PathBuf, module: String, version: String) {
+pub async fn install_module(project_path: PathBuf, module: String, version: String) -> Result<(), Box<dyn std::error::Error>> {
     println!("Installing module '{module}@{version}' to project: {}", project_path.display());
 
     let manifest_path = project_path.join("feather.json");
     if !manifest_path.exists() {
-        eprintln!("No feather.json found in {}", project_path.display());
-        return;
+        return Err(format!("No feather.json found in {}", project_path.display()).into());
     }
 
-    let manifest_content = fs::read_to_string(&manifest_path).unwrap();
-    let mut manifest: FeatherManifest = serde_json::from_str(&manifest_content).unwrap();
+    let manifest_content = fs::read_to_string(&manifest_path)?;
+    let mut manifest: FeatherManifest = serde_json::from_str(&manifest_content)?;
 
     if manifest.modules.is_none() {
         manifest.modules = Some(HashMap::new());
     }
-    manifest.modules.as_mut().unwrap().insert(module.clone(), version.clone());
+    manifest.modules.as_mut().ok_or("Manifest modules section is missing")?.insert(module.clone(), version.clone());
 
     // Update lockfile
     let lock_path = project_path.join("feather.lock");
     let mut lockfile = if lock_path.exists() {
-        let lock_content = fs::read_to_string(&lock_path).unwrap();
+        let lock_content = fs::read_to_string(&lock_path)?;
         serde_json::from_str(&lock_content).unwrap_or(FeatherLock {
             sdk_version: FEATHER_SDK_VERSION.to_string(),
             resolved: HashMap::new(),
@@ -48,29 +47,30 @@ pub async fn install_module(project_path: PathBuf, module: String, version: Stri
         },
     );
 
-    let updated_manifest = serde_json::to_string_pretty(&manifest).unwrap();
-    fs::write(manifest_path, updated_manifest).unwrap();
+    let updated_manifest = serde_json::to_string_pretty(&manifest)?;
+    fs::write(manifest_path, updated_manifest)?;
 
-    let updated_lock = serde_json::to_string_pretty(&lockfile).unwrap();
-    fs::write(lock_path, updated_lock).unwrap();
+    let updated_lock = serde_json::to_string_pretty(&lockfile)?;
+    fs::write(lock_path, updated_lock)?;
 
     println!("✅ Module '{module}' installed successfully.");
+    Ok(())
 }
 
-pub async fn uninstall_module(project_path: PathBuf, module: String) {
+pub async fn uninstall_module(project_path: PathBuf, module: String) -> Result<(), Box<dyn std::error::Error>> {
     println!("Uninstalling module '{module}' from project: {}", project_path.display());
     // Simplified implementation
+    Ok(())
 }
 
-pub async fn list_modules(project_path: PathBuf) {
+pub async fn list_modules(project_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let manifest_path = project_path.join("feather.json");
     if !manifest_path.exists() {
-        eprintln!("No feather.json found in {}", project_path.display());
-        return;
+        return Err(format!("No feather.json found in {}", project_path.display()).into());
     }
 
-    let manifest_content = fs::read_to_string(&manifest_path).unwrap();
-    let manifest: FeatherManifest = serde_json::from_str(&manifest_content).unwrap();
+    let manifest_content = fs::read_to_string(&manifest_path)?;
+    let manifest: FeatherManifest = serde_json::from_str(&manifest_content)?;
 
     println!("🪶 Installed Modules:");
     if let Some(modules) = manifest.modules {
@@ -80,13 +80,15 @@ pub async fn list_modules(project_path: PathBuf) {
     } else {
         println!("  No modules installed.");
     }
+    Ok(())
 }
 
-pub async fn upgrade_modules(project_path: PathBuf) {
+pub async fn upgrade_modules(project_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     println!("Upgrading all modules in project: {}", project_path.display());
+    Ok(())
 }
 
-pub async fn doctor(project_path: PathBuf) {
+pub async fn doctor(project_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     println!("🪶 Feather Doctor: Checking environment for project at {}...", project_path.display());
 
     let mut issues = 0;
@@ -191,15 +193,15 @@ pub async fn doctor(project_path: PathBuf) {
     } else {
         println!("🛑 Doctor found {} issues. Please fix them for a stable experience.", issues);
     }
+    Ok(())
 }
 
-pub async fn init_project(name: String) {
+pub async fn init_project(name: String) -> Result<(), Box<dyn std::error::Error>> {
     println!("🪶 Initializing new Feather project: {name}");
 
     let project_dir = PathBuf::from(&name);
     if project_dir.exists() {
-        eprintln!("Directory '{name}' already exists.");
-        return;
+        return Err(format!("Directory '{name}' already exists.").into());
     }
 
     let src_dir = project_dir
@@ -211,8 +213,8 @@ pub async fn init_project(name: String) {
         .join(&name);
     let feather_dir = project_dir.join(".feather");
 
-    fs::create_dir_all(&src_dir).unwrap();
-    fs::create_dir_all(&feather_dir).unwrap();
+    fs::create_dir_all(&src_dir)?;
+    fs::create_dir_all(&feather_dir)?;
 
     let manifest = serde_json::json!({
         "entry": format!("src/commonMain/kotlin/com/example/{name}/App.kt"),
@@ -224,9 +226,8 @@ pub async fn init_project(name: String) {
     });
     fs::write(
         project_dir.join("feather.json"),
-        serde_json::to_string_pretty(&manifest).unwrap(),
-    )
-    .unwrap();
+        serde_json::to_string_pretty(&manifest)?,
+    )?;
 
     let app_source = format!(
         r#"package com.example.{name}
@@ -250,40 +251,40 @@ class App : FeatherApp() {{
 }}
 "#
     );
-    fs::write(src_dir.join("App.kt"), app_source).unwrap();
+    fs::write(src_dir.join("App.kt"), app_source)?;
 
     println!("✅ Project created at ./{name}");
+    Ok(())
 }
 
-pub async fn build_production(project_path: PathBuf, target: String) {
+pub async fn build_production(project_path: PathBuf, target: String) -> Result<(), Box<dyn std::error::Error>> {
     println!("🪶 Feather Build: Generating production bundle for {}...", target);
 
     let manifest_path = project_path.join("feather.json");
     if !manifest_path.exists() {
-        eprintln!("❌ No feather.json found in {}", project_path.display());
-        std::process::exit(1);
+        return Err(format!("❌ No feather.json found in {}", project_path.display()).into());
     }
 
-    let manifest_source = fs::read_to_string(&manifest_path).unwrap();
-    let manifest: FeatherManifest = serde_json::from_str(&manifest_source).expect("Invalid feather.json");
+    let manifest_source = fs::read_to_string(&manifest_path)?;
+    let manifest: FeatherManifest = serde_json::from_str(&manifest_source)?;
 
     let output_dir = project_path.join("dist").join(&target);
-    fs::create_dir_all(&output_dir).ok();
+    fs::create_dir_all(&output_dir)?;
 
     println!("  🚀 Step 1: Compiling logic to WASM...");
-    compile_wasm(project_path.clone()).await;
+    compile_wasm(project_path.clone()).await?;
 
     let wasm_src = project_path.join(".feather").join("app.wasm");
     if wasm_src.exists() {
-        fs::copy(&wasm_src, output_dir.join("app.wasm")).ok();
+        fs::copy(&wasm_src, output_dir.join("app.wasm"))?;
     }
 
     println!("  🎨 Step 2: Extracting and Optimizing UI tree...");
-    let entry_source = fs::read_to_string(project_path.join(&manifest.entry)).expect("Entry not found");
+    let entry_source = fs::read_to_string(project_path.join(&manifest.entry))?;
     let runtime = Arc::new(AppRuntime::new());
 
     let mut widgets = if manifest.entry.ends_with(".fthr") {
-        crate::fui_parser::parse_fui(&entry_source).expect("FUI parsing failed").root
+        crate::fui_parser::parse_fui(&entry_source).map_err(|e| format!("FUI parsing failed: {e:?}"))?.root
     } else {
         let mut parser = crate::symbolic_parser::SymbolicParser::new(&entry_source, Arc::clone(&runtime));
         WidgetNode::Column {
@@ -309,55 +310,58 @@ pub async fn build_production(project_path: PathBuf, target: String) {
         "protocol_version": 1,
         "root": widgets,
         "state": state_map,
-    })).unwrap();
-    fs::write(output_dir.join("app.feather.json"), &json_payload).ok();
+    }))?;
+    fs::write(output_dir.join("app.feather.json"), &json_payload)?;
 
     let mut s = flexbuffers::FlexbufferSerializer::new();
     if widgets.serialize(&mut s).is_ok() {
-        fs::write(output_dir.join("app.feather.fxb"), s.view()).ok();
+        fs::write(output_dir.join("app.feather.fxb"), s.view())?;
     }
 
     if let Ok(mp_bytes) = rmp_serde::to_vec(&widgets) {
-        fs::write(output_dir.join("app.feather.mp"), &mp_bytes).ok();
+        fs::write(output_dir.join("app.feather.mp"), &mp_bytes)?;
     }
-println!("  🚀 Step 4: Deploying to host shells...");
 
-// Find workspace root (heuristic: parent of samples directory or current dir)
-let workspace_root = if project_path.to_str().unwrap().contains("samples") {
-    project_path.parent().unwrap().parent().unwrap().to_path_buf()
-} else {
-    project_path.clone()
-};
+    println!("  🚀 Step 4: Deploying to host shells...");
 
-// Deploy to Android
-let android_assets = workspace_root.join("host/android/app/src/main/assets/feather");
-fs::create_dir_all(&android_assets).ok();
-if android_assets.exists() {
-    fs::copy(output_dir.join("app.feather.fxb"), android_assets.join("app.feather.fxb")).ok();
-    fs::copy(output_dir.join("app.wasm"), android_assets.join("app.wasm")).ok();
-    println!("     ✅ Deployed to Android Assets: {}", android_assets.display());
-}
+    // Find workspace root (heuristic: parent of samples directory or current dir)
+    let workspace_root = if project_path.to_str().ok_or("Invalid project path")?.contains("samples") {
+        project_path.parent().ok_or("No parent dir")?.parent().ok_or("No grandparent dir")?.to_path_buf()
+    } else {
+        project_path.clone()
+    };
 
-// Deploy to iOS
-let ios_assets = workspace_root.join("host/ios/FeatherHost/feather");
-fs::create_dir_all(&ios_assets).ok();
-if ios_assets.exists() {
-    fs::copy(output_dir.join("app.feather.mp"), ios_assets.join("app.feather.mp")).ok();
-    fs::copy(output_dir.join("app.wasm"), ios_assets.join("app.wasm")).ok();
-    println!("     ✅ Deployed to iOS Bundle: {}", ios_assets.display());
-}
+    // Deploy to Android
+    let android_assets = workspace_root.join("host/android/app/src/main/assets/feather");
+    fs::create_dir_all(&android_assets)?;
+    if android_assets.exists() {
+        let _ = fs::copy(output_dir.join("app.feather.fxb"), android_assets.join("app.feather.fxb"));
+        let _ = fs::copy(output_dir.join("app.wasm"), android_assets.join("app.wasm"));
+        println!("     ✅ Deployed to Android Assets: {}", android_assets.display());
+    }
+
+    // Deploy to iOS
+    let ios_assets = workspace_root.join("host/ios/FeatherHost/feather");
+    fs::create_dir_all(&ios_assets)?;
+    if ios_assets.exists() {
+        let _ = fs::copy(output_dir.join("app.feather.mp"), ios_assets.join("app.feather.mp"));
+        let _ = fs::copy(output_dir.join("app.wasm"), ios_assets.join("app.wasm"));
+        println!("     ✅ Deployed to iOS Bundle: {}", ios_assets.display());
+    }
 
     println!("✅ Production artifacts generated and deployed successfully.");
+    Ok(())
 }
 
-pub async fn compile_wasm(project_path: PathBuf) {
+pub async fn compile_wasm(project_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     println!("🪶 Compiling Kotlin → WebAssembly...");
     let feather_dir = project_path.join(".feather");
     if !feather_dir.exists() {
-        fs::create_dir_all(&feather_dir).unwrap();
+        fs::create_dir_all(&feather_dir)?;
     }
     let output_wasm = feather_dir.join("app.wasm");
-    fs::write(output_wasm, b"\0asm\x01\0\0\0").unwrap();
+    fs::write(output_wasm, b"\0asm\x01\0\0\0")?;
+    Ok(())
 }
 
 fn discover_kt_files(dir: &Path) -> Vec<PathBuf> {

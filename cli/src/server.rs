@@ -57,11 +57,22 @@ pub async fn run_server(config: DevServerConfig) {
     let tx = Arc::new(tx);
     let runtime = Arc::new(AppRuntime::default());
 
+    let previous_layout = Arc::new(std::sync::Mutex::new(None));
+    {
+        let initial_doc = render_document(&config, &runtime);
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&initial_doc) {
+            if let Some(root) = val.get("root") {
+                *previous_layout.lock().unwrap() = Some(root.to_string());
+            }
+        }
+    }
+
     let tx_clone = Arc::clone(&tx);
     let watcher_config = config.clone();
     let watcher_runtime = Arc::clone(&runtime);
+    let watcher_prev = Arc::clone(&previous_layout);
     tokio::spawn(async move {
-        if let Err(e) = watch_files(watcher_config, tx_clone, watcher_runtime) {
+        if let Err(e) = watch_files(watcher_config, tx_clone, watcher_runtime, watcher_prev) {
             eprintln!("File watcher error: {:?}", e);
         }
     });
@@ -70,6 +81,7 @@ pub async fn run_server(config: DevServerConfig) {
     let poll_tx = Arc::clone(&tx);
     let poll_runtime = Arc::clone(&runtime);
     let poll_config = config.clone();
+    let poll_prev = Arc::clone(&previous_layout);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
         loop {
@@ -85,7 +97,7 @@ pub async fn run_server(config: DevServerConfig) {
                 poll_runtime.poll_render_needed()
             };
             if needed {
-                let _ = poll_tx.send(render_document(&poll_config, &poll_runtime));
+                handle_layout_update(&poll_config, &poll_runtime, &poll_tx, &poll_prev);
             }
         }
     });
@@ -100,6 +112,7 @@ pub async fn run_server(config: DevServerConfig) {
     let tx_filter = warp::any().map(move || Arc::clone(&tx));
     let config_filter = warp::any().map(move || filter_config.clone());
     let runtime_filter = warp::any().map(move || Arc::clone(&filter_runtime));
+    let prev_filter = warp::any().map(move || Arc::clone(&previous_layout));
     let bundle_route = warp::path!("bundle" / "manifest")
         .and(warp::get())
         .map(
@@ -113,30 +126,43 @@ pub async fn run_server(config: DevServerConfig) {
     let artifact_route = warp::path!("bundle" / "artifact" / String)
         .and(warp::get())
         .map(move |artifact_path: String| {
-            if artifact_path.contains("..") || artifact_path.starts_with('/') {
+            let normalized_path = artifact_path.replace('\\', "/");
+            let mut is_safe = true;
+            for comp in std::path::Path::new(&normalized_path).components() {
+                if !matches!(comp, std::path::Component::Normal(_)) {
+                    is_safe = false;
+                    break;
+                }
+            }
+
+            if !is_safe {
                 return warp::http::Response::builder()
                     .status(warp::http::StatusCode::BAD_REQUEST)
                     .body(Vec::from("invalid artifact path"))
-                    .unwrap();
+                    .unwrap_or_else(|_| warp::http::Response::new(Vec::from("invalid artifact path")));
             }
 
             if let Err(error) = build_bundle(&artifact_config, &artifact_runtime) {
+                let body = error.into_bytes();
                 return warp::http::Response::builder()
                     .status(warp::http::StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(error.into_bytes())
-                    .unwrap();
+                    .body(body.clone())
+                    .unwrap_or_else(|_| warp::http::Response::new(body));
             }
 
-            let artifact_file = artifact_config.bundle_path.join(artifact_path);
+            let artifact_file = artifact_config.bundle_path.join(normalized_path);
             match fs::read(artifact_file) {
                 Ok(payload) => warp::http::Response::builder()
                     .status(warp::http::StatusCode::OK)
-                    .body(payload)
-                    .unwrap(),
-                Err(error) => warp::http::Response::builder()
-                    .status(warp::http::StatusCode::NOT_FOUND)
-                    .body(format!("artifact not found: {error}").into_bytes())
-                    .unwrap(),
+                    .body(payload.clone())
+                    .unwrap_or_else(|_| warp::http::Response::new(payload)),
+                Err(error) => {
+                    let msg = format!("artifact not found: {error}").into_bytes();
+                    warp::http::Response::builder()
+                        .status(warp::http::StatusCode::NOT_FOUND)
+                        .body(msg.clone())
+                        .unwrap_or_else(|_| warp::http::Response::new(msg))
+                }
             }
         });
 
@@ -145,16 +171,34 @@ pub async fn run_server(config: DevServerConfig) {
         .and(tx_filter)
         .and(config_filter)
         .and(runtime_filter)
+        .and(prev_filter)
+        .and(warp::header::optional::<String>("origin"))
         .map(
             |ws: warp::ws::Ws,
              tx: Arc<broadcast::Sender<String>>,
              config: DevServerConfig,
-             runtime: Arc<AppRuntime>| {
-                ws.on_upgrade(move |socket| handle_connection(socket, tx, config, runtime))
+             runtime: Arc<AppRuntime>,
+             prev_layout: Arc<std::sync::Mutex<Option<String>>>,
+             origin: Option<String>| {
+                ws.on_upgrade(move |socket| handle_connection(socket, tx, config, runtime, prev_layout, origin))
             },
         );
 
-    let routes = ws_route.or(bundle_route).or(artifact_route);
+    let devtools_html = include_str!("devtools.html");
+    
+    let devtools_route = warp::path!("devtools")
+        .and(warp::get())
+        .map(move || warp::reply::html(devtools_html));
+
+    let devtools_index_route = warp::path!("devtools" / "index.html")
+        .and(warp::get())
+        .map(move || warp::reply::html(devtools_html));
+
+    let routes = ws_route
+        .or(bundle_route)
+        .or(artifact_route)
+        .or(devtools_route)
+        .or(devtools_index_route);
 
     warp::serve(routes).run((host, port)).await;
 }
@@ -163,6 +207,7 @@ fn watch_files(
     config: DevServerConfig,
     tx: Arc<broadcast::Sender<String>>,
     runtime: Arc<AppRuntime>,
+    previous_layout: Arc<std::sync::Mutex<Option<String>>>,
 ) -> notify::Result<()> {
     let (std_tx, std_rx) = std::sync::mpsc::channel();
 
@@ -199,7 +244,9 @@ fn watch_files(
                 
                 if changed_wasm {
                     println!("WASM changed: {:?}", event.paths);
-                    let _ = crate::bundler::build_bundle(&config, &runtime);
+                    let _ = preserve_and_refresh_state(&runtime, &tx, || {
+                        crate::bundler::build_bundle(&config, &runtime)
+                    });
                     let _ = tx.send(
                         serde_json::json!({
                             "type": "hot-reload-wasm",
@@ -209,7 +256,9 @@ fn watch_files(
                     );
                 } else {
                     println!("File changed: {:?}", event.paths);
-                    let _ = tx.send(render_document(&config, &runtime));
+                    let _ = preserve_and_refresh_state(&runtime, &tx, || {
+                        handle_layout_update(&config, &runtime, &tx, &previous_layout)
+                    });
                 }
             }
             Err(e) => eprintln!("watch error: {:?}", e),
@@ -224,7 +273,16 @@ async fn handle_connection(
     tx: Arc<broadcast::Sender<String>>,
     config: DevServerConfig,
     runtime: Arc<AppRuntime>,
+    previous_layout: Arc<std::sync::Mutex<Option<String>>>,
+    origin: Option<String>,
 ) {
+    if let Some(ref origin_str) = origin {
+        if !is_origin_allowed(origin_str, config.port) {
+            eprintln!("⚠️  [SECURITY WARNING]: Rejected connection from unauthorized origin: {}", origin_str);
+            return;
+        }
+    }
+
     println!("Client connected!");
 
     let (mut ws_tx, mut ws_rx) = ws.split();
@@ -250,6 +308,7 @@ async fn handle_connection(
     let event_tx = Arc::clone(&tx);
     let event_runtime = Arc::clone(&runtime);
     let event_config = config.clone();
+    let event_prev = Arc::clone(&previous_layout);
     let mut ws_rx_task = tokio::spawn(async move {
         while let Some(result) = ws_rx.next().await {
             match result {
@@ -267,6 +326,25 @@ async fn handle_connection(
                                         eprintln!("📱 🚨 [DEVICE ERROR]: {}", err_msg);
                                     }
                                     true
+                                } else if msg_type == "devtools_state_update" {
+                                    if let (Some(key), Some(value)) = (
+                                        json.get("key").and_then(|v| v.as_str()),
+                                        json.get("value")
+                                    ) {
+                                        let val_str = serde_json::to_string(value).unwrap_or_default();
+                                        event_runtime.set_state(key, &val_str);
+                                        
+                                        let sync_packet = serde_json::json!({
+                                            "type": "state_update",
+                                            "key": key,
+                                            "value": value
+                                        });
+                                        let _ = event_tx.send(sync_packet.to_string());
+                                    }
+                                    true
+                                } else if msg_type == "action" {
+                                    let _ = event_tx.send(text.to_string());
+                                    true
                                 } else { false }
                             } else { false }
                         } else { false };
@@ -274,7 +352,7 @@ async fn handle_connection(
                         if !is_handled {
                             println!("Received host event: {text}");
                             apply_action_event(text, &event_runtime);
-                            let _ = event_tx.send(render_document(&event_config, &event_runtime));
+                            handle_layout_update(&event_config, &event_runtime, &event_tx, &event_prev);
                         }
                     }
                 }
@@ -299,6 +377,48 @@ fn apply_action_event(payload: &str, runtime: &Arc<AppRuntime>) {
     runtime.apply_action_event(payload);
 }
 
+fn handle_layout_update(
+    config: &DevServerConfig,
+    runtime: &Arc<AppRuntime>,
+    tx: &Arc<broadcast::Sender<String>>,
+    previous_layout: &Arc<std::sync::Mutex<Option<String>>>,
+) -> String {
+    let new_doc = render_document(config, runtime);
+    
+    let new_val: serde_json::Value = match serde_json::from_str(&new_doc) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = tx.send(new_doc.clone());
+            return new_doc;
+        }
+    };
+    
+    let new_root = match new_val.get("root") {
+        Some(r) => r.to_string(),
+        None => {
+            let _ = tx.send(new_doc.clone());
+            return new_doc;
+        }
+    };
+
+    let mut prev = previous_layout.lock().unwrap();
+    if let Some(ref old_root) = *prev {
+        let patches = feather_core::diff_layouts(old_root.clone(), new_root.clone());
+        if !patches.is_empty() {
+            let patch_msg = serde_json::json!({
+                "type": "patch",
+                "patches": patches,
+            }).to_string();
+            let _ = tx.send(patch_msg);
+        }
+    } else {
+        let _ = tx.send(new_doc.clone());
+    }
+    
+    *prev = Some(new_root);
+    new_doc
+}
+
 fn get_public_url(port: u16) -> Option<String> {
     // 1. Check for Google Cloud Workstations (Monospace)
     if let Ok(web_host) = std::env::var("WEB_HOST") {
@@ -311,4 +431,90 @@ fn get_public_url(port: u16) -> Option<String> {
     }
 
     None
+}
+
+fn preserve_and_refresh_state<F, R>(runtime: &Arc<AppRuntime>, tx: &Arc<broadcast::Sender<String>>, f: F) -> R 
+where
+    F: FnOnce() -> R,
+{
+    let state_json = runtime.get_all_state();
+    let result = f();
+    if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&state_json) {
+        for (key, val) in map {
+            let val_str = serde_json::to_string(&val).unwrap_or_default();
+            runtime.set_state(&key, &val_str);
+            let sync_packet = serde_json::json!({
+                "type": "state_update",
+                "key": key,
+                "value": val
+            });
+            let _ = tx.send(sync_packet.to_string());
+        }
+    }
+    result
+}
+
+fn extract_host(origin: &str) -> Option<&str> {
+    let host_part = if origin.starts_with("http://") {
+        &origin[7..]
+    } else if origin.starts_with("https://") {
+        &origin[8..]
+    } else {
+        return None;
+    };
+
+    let host_part = host_part.trim_end_matches('/');
+
+    // If it's an IPv6 address, it starts with '['
+    if host_part.starts_with('[') {
+        if let Some(close_bracket_idx) = host_part.find(']') {
+            return Some(&host_part[..close_bracket_idx + 1]);
+        }
+    }
+
+    // For IPv4 or domain name, find the colon separating the port
+    match host_part.find(':') {
+        Some(idx) => Some(&host_part[..idx]),
+        None => Some(host_part),
+    }
+}
+
+fn is_origin_allowed(origin: &str, port: u16) -> bool {
+    let host = match extract_host(origin) {
+        Some(h) => h,
+        None => return false,
+    };
+
+    // Standard local loopbacks
+    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
+        return true;
+    }
+
+    // Local private subnets (e.g. 192.168.x.x, 10.x.x.x, 172.16.x.x-172.31.x.x)
+    if host.starts_with("192.168.") || host.starts_with("10.") {
+        return true;
+    }
+    if host.starts_with("172.") {
+        if let Some(second_octet) = host.split('.').nth(1).and_then(|s| s.parse::<u8>().ok()) {
+            if second_octet >= 16 && second_octet <= 31 {
+                return true;
+            }
+        }
+    }
+
+    // Tunnel/workstation domains
+    if host.ends_with(".ngrok.io") || host.ends_with(".ngrok-free.app") {
+        return true;
+    }
+
+    // Dynamic public tunnel/GCloud/Codespaces validation
+    if let Some(public_url) = get_public_url(port) {
+        if let Some(p_host) = extract_host(&public_url) {
+            if host == p_host {
+                return true;
+            }
+        }
+    }
+
+    false
 }

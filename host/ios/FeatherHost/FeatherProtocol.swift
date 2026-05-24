@@ -163,6 +163,7 @@ struct BundleManifest: Decodable {
     let assets: [BundleArtifact]?
     let modules: [BundleModuleEntry]?
     let delta: BundleDelta?
+    let signature: String?
 
     enum CodingKeys: String, CodingKey {
         case sdkVersion = "sdk_version"
@@ -172,6 +173,7 @@ struct BundleManifest: Decodable {
         case assets
         case modules
         case delta
+        case signature
     }
 }
 

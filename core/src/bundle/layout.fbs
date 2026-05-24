@@ -1,0 +1,221 @@
+namespace dev.feather.host;
+
+enum WidgetType : byte {
+  Text = 0,
+  StateText = 1,
+  Button = 2,
+  TextInput = 3,
+  Image = 4,
+  Icon = 5,
+  IconButton = 6,
+  Spacer = 7,
+  Divider = 8,
+  Column = 9,
+  Row = 10,
+  Box = 11,
+  LazyColumn = 12,
+  LazyRow = 13,
+  LazyGrid = 14,
+  ScrollView = 15,
+  Card = 16,
+  Surface = 17,
+  AspectRatio = 18,
+  Switch = 19,
+  Checkbox = 20,
+  RadioGroup = 21,
+  Slider = 22,
+  SearchBar = 23,
+  DropdownMenu = 24,
+  LinearProgress = 25,
+  CircularProgress = 26,
+  Dialog = 27,
+  BottomSheet = 28,
+  Snackbar = 29,
+  Badge = 30,
+  Chip = 31,
+  Tooltip = 32,
+  FloatingActionButton = 33,
+  Placeholder = 34,
+  Scaffold = 35,
+  TopAppBar = 36,
+  BottomAppBar = 37,
+  TabRow = 38,
+  Pager = 39,
+  Drawer = 40,
+  Navigator = 41,
+  BottomTabs = 42,
+  Tab = 43,
+  ForEach = 44,
+  Condition = 45,
+  VideoPlayer = 46,
+  AudioPlayer = 47,
+  WebView = 48,
+  GestureDetector = 49,
+  Clickable = 50,
+  LongPressable = 51,
+  PullToRefresh = 52,
+  Custom = 53
+}
+
+table Style {
+  color:string;
+  font_size:int;
+  font_weight:string;
+  font_style:string;
+  text_align:string;
+  text_decoration:string;
+  font_family:string;
+  background:string;
+  padding:int;
+  padding_horizontal:int;
+  padding_vertical:int;
+  padding_top:int;
+  padding_bottom:int;
+  padding_start:int;
+  padding_end:int;
+  margin:int;
+  corner_radius:int;
+  border_color:string;
+  border_width:int;
+  width:string;
+  height:string;
+  min_width:string;
+  min_height:string;
+  max_width:string;
+  max_height:string;
+  alignment:string;
+  spacing:int;
+  opacity:float;
+  text_color:string;
+  placeholder_color:string;
+  content_mode:string;
+  shadow:string;
+  elevation:int;
+  max_lines:int;
+  flex:int;
+  fill_max_width:bool;
+  fill_max_height:bool;
+  aspect_ratio:float;
+  gradient:string;
+  clip:bool;
+  keyboard_type:string;
+  max_length:int;
+  multiline:bool;
+  secure:bool;
+  direction:string;
+  position:string;
+  top:float;
+  bottom:float;
+  left:float;
+  right:float;
+  z_index:float;
+}
+
+table RadioOption {
+  value:string;
+  label:string;
+  color:string;
+}
+
+table TabItem {
+  title:string;
+  icon:string;
+}
+
+table DrawerItem {
+  title:string;
+  icon:string;
+  route:string;
+  action:string;
+}
+
+table Screen {
+  route:string;
+  node:FlatNode;
+}
+
+table FlatNode {
+  type:WidgetType;
+  id:string;
+  text:string;
+  action:string;
+  enabled:bool = true;
+  value:string;
+  placeholder:string;
+  label:string;
+  src:string;
+  alt:string;
+  name:string;
+  size:int;
+  color:string;
+  background:string;
+  flex:int;
+  thickness:int;
+  indent:int;
+  direction:string;
+  ratio:float;
+  checked:bool;
+  track_color:string;
+  thumb_color:string;
+  selected:string;
+  min:float;
+  max:float;
+  step:float;
+  progress:float;
+  stroke_width:int;
+  visible:bool;
+  title:string;
+  confirm_text:string;
+  dismiss_text:string;
+  confirm_action:string;
+  dismiss_action:string;
+  message:string;
+  action_text:string;
+  count:int;
+  icon_color:string;
+  corner_radius:int;
+  subtitle:string;
+  navigation_icon:string;
+  navigation_action:string;
+  current_page:int;
+  initial_route:string;
+  autoplay:bool;
+  controls:bool;
+  loop:bool;
+  poster:string;
+  url:string;
+  on_tap:string;
+  on_pan:string;
+  ripple:bool;
+  duration:int;
+  refreshing:bool;
+  module:string;
+  props:string;
+  style:Style;
+  children:[FlatNode];
+  options:[string];
+  radio_options:[RadioOption];
+  tab_items:[TabItem];
+  drawer_items:[DrawerItem];
+  screens:[Screen];
+  key:string;
+  prefix:string;
+  fallback:string;
+  child:FlatNode;
+  content:FlatNode;
+  top_bar:FlatNode;
+  bottom_bar:FlatNode;
+  floating_action_button:FlatNode;
+  drawer:FlatNode;
+  body:FlatNode;
+  header:FlatNode;
+  pages:[FlatNode];
+  tabs:[FlatNode];
+  template:FlatNode;
+  then:FlatNode;
+  otherwise:FlatNode;
+  start_content:FlatNode;
+  end_content:FlatNode;
+}
+
+root_type FlatNode;

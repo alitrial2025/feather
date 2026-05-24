@@ -34,7 +34,7 @@ class StorageModule: FeatherModule {
             defaults.removeObject(forKey: key)
             return true
         } else if command == "Storage/clear" {
-            let domain = Bundle.main.bundleIdentifier!
+            guard let domain = Bundle.main.bundleIdentifier else { return false }
             defaults.removePersistentDomain(forName: domain)
             return true
         }
@@ -69,7 +69,7 @@ class StorageModule: FeatherModule {
                 return true
             }
         case "clear":
-            let domain = Bundle.main.bundleIdentifier!
+            guard let domain = Bundle.main.bundleIdentifier else { return false }
             defaults.removePersistentDomain(forName: domain)
             return true
         default:

@@ -68,6 +68,19 @@ fun QRScanner(
             DisposableEffect(cameraExecutor) {
                 onDispose {
                     cameraExecutor.shutdown()
+                    try {
+                        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                        cameraProviderFuture.addListener({
+                            try {
+                                val cameraProvider = cameraProviderFuture.get()
+                                cameraProvider.unbindAll()
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
+                        }, ContextCompat.getMainExecutor(context))
+                    } catch (e: Exception) {
+                        // Ignore
+                    }
                 }
             }
 

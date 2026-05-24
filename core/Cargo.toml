@@ -20,8 +20,10 @@ wasmi = "1.0.9"
 wasm-encoder = "0.202"
 wasmparser = "0.202"
 walrus = "0.26.1"
+ring = "0.17"
 flexbuffers = "25.12.19"
 base64 = "0.22.1"
+flatbuffers = "24.3.25"
 
 [dev-dependencies]
 wat = "1.249.0"

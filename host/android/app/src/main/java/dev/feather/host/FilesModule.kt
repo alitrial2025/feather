@@ -15,6 +15,11 @@ class FilesModule : FeatherModule {
         val path = payload.optString("path")
         val file = File(dir, path)
         
+        // Guard against path traversal attacks escaping the app sandbox
+        if (!file.canonicalPath.startsWith(dir.canonicalPath)) {
+            return false
+        }
+        
         return when (method) {
             "write" -> {
                 file.parentFile?.mkdirs()

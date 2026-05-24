@@ -82,7 +82,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                 if let Some(pos) = source[search_start..].find(pattern) {
                     let start_idx = search_start + pos;
                     let valid_boundary = start_idx == 0 || !source.as_bytes()[start_idx - 1].is_ascii_alphanumeric();
-                    if valid_boundary && (first_match.is_none() || start_idx < first_match.unwrap().1) {
+                    if valid_boundary && first_match.as_ref().map_or(true, |fm| start_idx < fm.1) {
                         let open_char = if p_idx == 0 { '(' } else if p_idx == 1 { '{' } else { ' ' };
                         first_match = Some((kw, start_idx, open_char));
                     }
@@ -134,7 +134,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         if let Some(cp) = find_closing_brace(&source[name_start + op..], '(', ')') {
                             let args_str = source[name_start + op + 1..name_start + op + cp].trim().to_string();
                             let defined_args: Vec<String> = args_str.split(',').map(|s| {
-                                let mut d_name = s.trim().split(':').next().unwrap().trim().to_string();
+                                let mut d_name = s.trim().split(':').next().unwrap_or("").trim().to_string();
                                 if d_name.starts_with("val ") { d_name = d_name[4..].trim().to_string(); }
                                 if d_name.starts_with("var ") { d_name = d_name[4..].trim().to_string(); }
                                 d_name
@@ -223,7 +223,14 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
             }
 
             let close_char = if open_char == '(' { ')' } else { '}' };
-            let start_bracket = start + source[start..].find(open_char).unwrap();
+            let start_offset = match source[start..].find(open_char) {
+                Some(idx) => idx,
+                None => {
+                    search_start = start + kw.len();
+                    continue;
+                }
+            };
+            let start_bracket = start + start_offset;
             if let Some(end_offset) = find_closing_brace(&source[start_bracket..], open_char, close_char) {
                 let end_idx = start_bracket + end_offset + 1;
                 let body = &source[start..end_idx];
@@ -242,7 +249,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                             text: runtime.state_value(&key).map(|v| format!("{prefix}{v}")).unwrap_or(fallback),
                             style: extract_style_from_body(body, context, &runtime),
                         }
-                    }
+                    },
                     "Button" => WidgetNode::Button {
                         text: resolve_expression(&extract_named_string_argument(body, "text").or_else(|| extract_first_string_argument(body, "Button")).unwrap_or_else(|| "Button".to_string()), context, &runtime),
                         action: extract_named_string_argument(body, "action").unwrap_or_else(|| "buttonPressed".to_string()),
@@ -299,10 +306,10 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         let body_widgets = parse_widgets_inner(inner_body, runtime.clone(), context, base_path);
                         WidgetNode::Scaffold {
                             top_bar: None, bottom_bar: None, floating_action_button: None, drawer: None,
-                            body: Box::new(if body_widgets.len() == 1 { body_widgets.into_iter().next().unwrap() } else { WidgetNode::Column { children: body_widgets, style: None } }),
+                            body: Box::new(if body_widgets.len() == 1 { body_widgets.into_iter().next().unwrap_or(WidgetNode::Text { text: "Empty Scaffold".to_string(), style: None }) } else { WidgetNode::Column { children: body_widgets, style: None } }),
                             style: extract_style_from_body(body, context, &runtime),
                         }
-                    }
+                    },
                     "VideoPlayer" => WidgetNode::VideoPlayer {
                         src: resolve_expression(&extract_named_string_argument(body, "src").or_else(|| extract_first_string_argument(body, "VideoPlayer")).unwrap_or_default(), context, &runtime),
                         autoplay: extract_named_bool_argument(body, "autoplay"),
@@ -317,9 +324,9 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         let content_widgets = parse_widgets_inner(inner_body, runtime.clone(), context, base_path);
                         WidgetNode::Screen {
                             route,
-                            content: Box::new(if content_widgets.len() == 1 { content_widgets.into_iter().next().unwrap() } else { WidgetNode::Column { children: content_widgets, style: None } }),
+                            content: Box::new(if content_widgets.len() == 1 { content_widgets.into_iter().next().unwrap_or(WidgetNode::Text { text: "Empty Screen".to_string(), style: None }) } else { WidgetNode::Column { children: content_widgets, style: None } }),
                         }
-                    }
+                    },
                     "Navigator" => {
                         let initial_route = extract_named_string_argument(body, "initialRoute").unwrap_or_else(|| "Home".to_string());
                         let parsed_screens = parse_widgets_inner(inner_body, runtime.clone(), context, base_path);
@@ -333,7 +340,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                             initial_route,
                             screens,
                         }
-                    }
+                    },
                     "ForEach" => {
                         let items_key = extract_named_string_argument(body, "itemsKey")
                             .or_else(|| extract_first_string_argument(body, "ForEach"))
@@ -341,7 +348,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         
                         let template_widgets = parse_widgets_inner(inner_body, runtime.clone(), context, base_path);
                         let template = if template_widgets.len() == 1 {
-                            template_widgets.into_iter().next().unwrap()
+                            template_widgets.into_iter().next().unwrap_or(WidgetNode::Text { text: "Empty ForEach".to_string(), style: None })
                         } else {
                             WidgetNode::Column { children: template_widgets, style: None }
                         };
@@ -350,7 +357,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                             items_key,
                             template: Box::new(template),
                         }
-                    }
+                    },
                     "Condition" => {
                         let key = extract_named_string_argument(body, "key")
                             .or_else(|| extract_first_string_argument(body, "Condition"))
@@ -359,9 +366,11 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         let children = parse_widgets_inner(inner_body, runtime.clone(), context, base_path);
                         let (then, otherwise) = if children.len() >= 2 {
                             let mut iter = children.into_iter();
-                            (iter.next().unwrap(), Some(Box::new(iter.next().unwrap())))
+                            let first = iter.next().unwrap_or(WidgetNode::Text { text: "Empty Condition".to_string(), style: None });
+                            let second = iter.next().map(Box::new);
+                            (first, second)
                         } else if children.len() == 1 {
-                            (children.into_iter().next().unwrap(), None)
+                            (children.into_iter().next().unwrap_or(WidgetNode::Text { text: "Empty Condition".to_string(), style: None }), None)
                         } else {
                             (WidgetNode::Text { text: "No content".to_string(), style: None }, None)
                         };
@@ -371,7 +380,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                             then: Box::new(then),
                             otherwise,
                         }
-                    }
+                    },
                     "GestureDetector" => {
                         let on_tap = extract_named_string_argument(body, "onTap");
                         let on_pan = extract_named_string_argument(body, "onPan");
@@ -379,9 +388,9 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                         WidgetNode::GestureDetector {
                             on_tap,
                             on_pan,
-                            child: Box::new(if children.len() == 1 { children.into_iter().next().unwrap() } else { WidgetNode::Column { children, style: None } }),
+                            child: Box::new(if children.len() == 1 { children.into_iter().next().unwrap_or(WidgetNode::Text { text: "Empty GestureDetector".to_string(), style: None }) } else { WidgetNode::Column { children, style: None } }),
                         }
-                    }
+                    },
                     _ => {
                         if let Some((fn_args_str, fn_body)) = context.functions.get(kw).cloned() {
                             let mut local_context = ParserContext {
@@ -394,7 +403,7 @@ fn parse_widgets_inner(source: &str, runtime: Arc<AppRuntime>, context: &mut Par
                             let passed_args: Vec<&str> = body.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
 
                             for (i, d_arg) in defined_args.iter().enumerate() {
-                                let d_name = d_arg.split(':').next().unwrap().trim();
+                                let d_name = d_arg.split(':').next().unwrap_or("").trim();
                                 if let Some(p_arg) = passed_args.get(i) {
                                     let mut val_expr = *p_arg;
                                     if let Some(eq_pos) = p_arg.find('=') {

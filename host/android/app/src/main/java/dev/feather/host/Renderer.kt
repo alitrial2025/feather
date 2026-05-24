@@ -423,6 +423,48 @@ fun FeatherRenderer(
                 else onAction(action, payload)
             }
         }
+        is FeatherNode.BottomTabsNode -> {
+            var selectedIndex by remember { mutableStateOf(0) }
+            val tabs = node.tabs.filterIsInstance<FeatherNode.TabNode>()
+            Column(modifier = Modifier.fillMaxSize().applyContainerStyle(node.style)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    if (selectedIndex < tabs.size) {
+                        FeatherRenderer(tabs[selectedIndex].content, onAction)
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colors.surface),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    tabs.forEachIndexed { index, tab ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clickable { selectedIndex = index }
+                                .padding(8.dp)
+                        ) {
+                            tab.icon?.let { iconName ->
+                                Icon(
+                                    getIconByName(iconName),
+                                    contentDescription = tab.title,
+                                    tint = if (index == selectedIndex) MaterialTheme.colors.primary else Color.Gray,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Text(
+                                text = tab.title,
+                                fontSize = 10.sp,
+                                color = if (index == selectedIndex) MaterialTheme.colors.primary else Color.Gray
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        is FeatherNode.TabNode -> {
+            // Tab should be rendered by its parent (BottomTabsNode). If rendered standalone, show content.
+            FeatherRenderer(node.content, onAction)
+        }
         
         // ── Feedback / Overlay ──
         is FeatherNode.DialogNode -> {
@@ -644,6 +686,55 @@ fun FeatherRenderer(
                     }
                 }
             }
+        }
+        is FeatherNode.SearchBarNode -> {
+            var value by remember(node.action) { mutableStateOf(node.value) }
+            val shape = RoundedCornerShape((node.style?.cornerRadius ?: 24).dp)
+            OutlinedTextField(
+                value = value,
+                onValueChange = { nextValue ->
+                    value = nextValue
+                    onAction(node.action, nextValue)
+                },
+                placeholder = {
+                    Text(
+                        text = node.placeholder,
+                        color = parseHexColor(node.style?.placeholderColor) ?: Color.Gray,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = parseHexColor(node.style?.color) ?: Color.Gray
+                    )
+                },
+                trailingIcon = {
+                    if (value.isNotEmpty()) {
+                        IconButton(onClick = {
+                            value = ""
+                            onAction(node.action, "")
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Clear",
+                                tint = parseHexColor(node.style?.color) ?: Color.Gray
+                            )
+                        }
+                    }
+                },
+                textStyle = buildTextStyle(node.style),
+                shape = shape,
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    backgroundColor = parseHexColor(node.style?.background) ?: Color.Transparent,
+                    focusedBorderColor = parseHexColor(node.style?.borderColor) ?: MaterialTheme.colors.primary,
+                    unfocusedBorderColor = parseHexColor(node.style?.borderColor) ?: Color.Gray,
+                ),
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .applyContainerStyle(node.style, isFocusable = true),
+            )
         }
 
         // ── Gesture Wrappers ──
@@ -1653,13 +1744,7 @@ fun Modifier.applyContainerStyle(
     style.aspectRatio?.let { mod = mod.aspectRatio(it) }
     style.clip?.let { if (it) mod = mod.clip(shape ?: RoundedCornerShape(0.dp)) }
 
-    if (style.position == "absolute") {
-        mod = mod.offset(
-            x = (style.left ?: 0f).dp,
-            y = (style.top ?: 0f).dp
-        )
-    }
-    style.zIndex?.let { mod = mod.zIndex(it) }
+
 
     if (isFocused) {
         val cornerRadius = style.cornerRadius ?: 0
@@ -1703,6 +1788,600 @@ private fun buildTextStyle(style: FeatherStyle?): TextStyle {
             "line-through" -> TextDecoration.LineThrough
             else -> null
         },
-        letterSpacing = style.fontSize?.let { it.toFloat() * 0.05f }?.sp ?: TextUnit.Unspecified,
     )
+}
+
+// MARK: - FlatBuffers Zero-Copy Decoding
+
+import com.google.flatbuffers.Table
+import java.nio.ByteOrder
+
+fun parseFlatBuffersMessage(bytes: ByteArray, registry: ModuleRegistry): Pair<FeatherNode, List<String>> {
+    return try {
+        val buffer = ByteBuffer.wrap(bytes)
+        val root = FlatNode.getRootAsFlatNode(buffer)
+        val node = toFeatherNode(root)
+        Pair(node, emptyList())
+    } catch (e: Exception) {
+        Pair(FeatherNode.TextNode("FlatBuffers Error: ${e.message}"), listOf(e.message ?: "Unknown error"))
+    }
+}
+
+private fun toFeatherStyle(flatStyle: FlatStyle?): FeatherStyle? {
+    if (flatStyle == null) return null
+    return FeatherStyle(
+        color = flatStyle.color(),
+        fontSize = if (flatStyle.fontSize() != 0) flatStyle.fontSize() else null,
+        background = flatStyle.background(),
+        padding = if (flatStyle.padding() != 0) flatStyle.padding() else null,
+        cornerRadius = if (flatStyle.cornerRadius() != 0) flatStyle.cornerRadius() else null,
+        width = flatStyle.width(),
+        height = flatStyle.height(),
+        paddingHorizontal = if (flatStyle.paddingHorizontal() != 0) flatStyle.paddingHorizontal() else null,
+        paddingVertical = if (flatStyle.paddingVertical() != 0) flatStyle.paddingVertical() else null,
+        paddingTop = if (flatStyle.paddingTop() != 0) flatStyle.paddingTop() else null,
+        paddingBottom = if (flatStyle.paddingBottom() != 0) flatStyle.paddingBottom() else null,
+        paddingStart = if (flatStyle.paddingStart() != 0) flatStyle.paddingStart() else null,
+        paddingEnd = if (flatStyle.paddingEnd() != 0) flatStyle.paddingEnd() else null,
+        margin = if (flatStyle.margin() != 0) flatStyle.margin() else null,
+        borderColor = flatStyle.borderColor(),
+        borderWidth = if (flatStyle.borderWidth() != 0) flatStyle.borderWidth() else null,
+        minWidth = flatStyle.minWidth(),
+        minHeight = flatStyle.minHeight(),
+        maxWidth = flatStyle.maxWidth(),
+        maxHeight = flatStyle.maxHeight(),
+        alignment = flatStyle.alignment(),
+        spacing = if (flatStyle.spacing() != 0) flatStyle.spacing() else null,
+        opacity = flatStyle.opacity(),
+        textColor = flatStyle.textColor(),
+        placeholderColor = flatStyle.placeholderColor(),
+        contentMode = flatStyle.contentMode(),
+        shadow = flatStyle.shadow(),
+        elevation = if (flatStyle.elevation() != 0) flatStyle.elevation() else null,
+        maxLines = if (flatStyle.maxLines() != 0) flatStyle.maxLines() else null,
+        flex = if (flatStyle.flex() != 0) flatStyle.flex() else null,
+        fillMaxWidth = flatStyle.fillMaxWidth(),
+        fillMaxHeight = flatStyle.fillMaxHeight(),
+        aspectRatio = if (flatStyle.aspectRatio() != 0.0f) flatStyle.aspectRatio() else null,
+        gradient = flatStyle.gradient(),
+        clip = flatStyle.clip(),
+        keyboardType = flatStyle.keyboardType(),
+        maxLength = if (flatStyle.maxLength() != 0) flatStyle.maxLength() else null,
+        multiline = flatStyle.multiline(),
+        secure = flatStyle.secure(),
+        direction = flatStyle.direction(),
+        position = flatStyle.position(),
+        top = if (flatStyle.top() != 0.0f) flatStyle.top() else null,
+        bottom = if (flatStyle.bottom() != 0.0f) flatStyle.bottom() else null,
+        left = if (flatStyle.left() != 0.0f) flatStyle.left() else null,
+        right = if (flatStyle.right() != 0.0f) flatStyle.right() else null,
+        zIndex = if (flatStyle.zIndex() != 0.0f) flatStyle.zIndex() else null,
+        fontWeight = flatStyle.fontWeight(),
+        fontStyle = flatStyle.fontStyle(),
+        textAlign = flatStyle.textAlign(),
+        textDecoration = flatStyle.textDecoration(),
+        fontFamily = flatStyle.fontFamily(),
+    )
+}
+
+private fun toFeatherNode(flatNode: FlatNode): FeatherNode {
+    val styleObj = flatNode.style(FlatStyle())
+    val style = if (styleObj != null) toFeatherStyle(styleObj) else null
+
+    return when (flatNode.type().toInt()) {
+        0 -> FeatherNode.TextNode(flatNode.text() ?: "", style) // Text
+        1 -> FeatherNode.StateTextNode(flatNode.key() ?: "", flatNode.prefix() ?: "", flatNode.fallback() ?: "", style) // StateText
+        2 -> FeatherNode.ButtonNode(flatNode.text() ?: "", flatNode.action() ?: "", flatNode.enabled(), style) // Button
+        3 -> FeatherNode.TextInputNode(flatNode.value() ?: "", flatNode.placeholder() ?: "", flatNode.action() ?: "", flatNode.label(), style) // TextInput
+        4 -> FeatherNode.ImageNode(flatNode.src() ?: "", flatNode.alt() ?: "", style) // Image
+        5 -> FeatherNode.IconNode(flatNode.name() ?: "", flatNode.size(), flatNode.color(), flatNode.action()) // Icon
+        6 -> FeatherNode.IconButtonNode(flatNode.name() ?: "", flatNode.action() ?: "", flatNode.size(), flatNode.color(), flatNode.background()) // IconButton
+        7 -> FeatherNode.SpacerNode(flatNode.flex()) // Spacer
+        8 -> FeatherNode.DividerNode(flatNode.color(), flatNode.thickness(), flatNode.indent()) // Divider
+        9 -> { // Column
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.ColumnNode(list, style)
+        }
+        10 -> { // Row
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.RowNode(list, style)
+        }
+        11 -> { // Box
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.BoxNode(list, style)
+        }
+        12 -> { // LazyColumn
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.LazyColumnNode(list, style)
+        }
+        13 -> { // LazyRow
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.LazyRowNode(list, style)
+        }
+        14 -> { // LazyGrid
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.LazyGridNode(list, flatNode.count(), style)
+        }
+        15 -> { // ScrollView
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.ScrollViewNode(list, flatNode.direction() ?: "vertical", style)
+        }
+        16 -> { // Card
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.CardNode(list, flatNode.action(), style)
+        }
+        17 -> { // Surface
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.SurfaceNode(list, style)
+        }
+        18 -> { // AspectRatio
+            val child = flatNode.child(FlatNode())
+            FeatherNode.AspectRatioNode(flatNode.ratio(), if (child != null) toFeatherNode(child) else FeatherNode.SpacerNode(1))
+        }
+        19 -> FeatherNode.SwitchNode(flatNode.checked(), flatNode.action() ?: "", flatNode.enabled(), flatNode.label(), flatNode.trackColor(), flatNode.thumbColor()) // Switch
+        20 -> FeatherNode.CheckboxNode(flatNode.checked(), flatNode.action() ?: "", flatNode.enabled(), flatNode.label(), flatNode.color()) // Checkbox
+        21 -> { // RadioGroup
+            val optionsList = mutableListOf<RadioOptionData>()
+            for (i in 0 until flatNode.radioOptionsLength()) {
+                flatNode.radioOptions(i)?.let {
+                    optionsList.add(RadioOptionData(it.value() ?: "", it.label() ?: "", it.color()))
+                }
+            }
+            FeatherNode.RadioGroupNode(flatNode.selected() ?: "", flatNode.action() ?: "", optionsList)
+        }
+        22 -> FeatherNode.SliderNode(flatNode.progress(), flatNode.min(), flatNode.max(), if (flatNode.step() != 0.0f) flatNode.step() else null, flatNode.action() ?: "", flatNode.label(), flatNode.trackColor(), flatNode.thumbColor()) // Slider
+        23 -> FeatherNode.SearchBarNode(flatNode.value() ?: "", flatNode.placeholder() ?: "", flatNode.action() ?: "", style) // SearchBar
+        24 -> { // DropdownMenu
+            val optList = mutableListOf<String>()
+            for (i in 0 until flatNode.optionsLength()) {
+                flatNode.options(i)?.let { optList.add(it) }
+            }
+            FeatherNode.DropdownMenuNode(flatNode.selected() ?: "", optList, flatNode.action() ?: "", flatNode.label(), style)
+        }
+        25 -> FeatherNode.LinearProgressNode(if (flatNode.progress() >= 0f) flatNode.progress() else null, flatNode.color(), flatNode.trackColor()) // LinearProgress
+        26 -> FeatherNode.CircularProgressNode(if (flatNode.progress() >= 0f) flatNode.progress() else null, flatNode.color(), flatNode.size(), flatNode.strokeWidth()) // CircularProgress
+        27 -> { // Dialog
+            val content = flatNode.content(FlatNode())
+            FeatherNode.DialogNode(flatNode.visible(), flatNode.title(), if (content != null) toFeatherNode(content) else FeatherNode.SpacerNode(1), flatNode.confirmText() ?: "", flatNode.dismissText(), flatNode.confirmAction() ?: "", flatNode.dismissAction())
+        }
+        28 -> { // BottomSheet
+            val content = flatNode.content(FlatNode())
+            FeatherNode.BottomSheetNode(flatNode.visible(), if (content != null) toFeatherNode(content) else FeatherNode.SpacerNode(1), flatNode.dismissAction(), style)
+        }
+        29 -> FeatherNode.SnackbarNode(flatNode.message() ?: "", flatNode.visible(), flatNode.actionText(), flatNode.action()) // Snackbar
+        30 -> { // Badge
+            val child = flatNode.child(FlatNode())
+            FeatherNode.BadgeNode(flatNode.count(), flatNode.color(), if (child != null) toFeatherNode(child) else null)
+        }
+        31 -> FeatherNode.ChipNode(flatNode.label() ?: "", flatNode.checked(), flatNode.action(), flatNode.name(), flatNode.color()) // Chip
+        32 -> { // Tooltip
+            val child = flatNode.child(FlatNode())
+            FeatherNode.TooltipNode(flatNode.message() ?: "", if (child != null) toFeatherNode(child) else FeatherNode.SpacerNode(1))
+        }
+        33 -> FeatherNode.FloatingActionButtonNode(flatNode.name() ?: "", flatNode.action() ?: "", flatNode.background(), flatNode.color()) // FloatingActionButton
+        34 -> FeatherNode.PlaceholderNode(flatNode.width(), flatNode.height(), if (flatNode.cornerRadius() != 0) flatNode.cornerRadius() else null) // Placeholder
+        35 -> { // Scaffold
+            val topBar = flatNode.topBar(FlatNode())
+            val bottomBar = flatNode.bottomBar(FlatNode())
+            val fab = flatNode.floatingActionButton(FlatNode())
+            val drawer = flatNode.drawer(FlatNode())
+            val body = flatNode.body(FlatNode())
+            FeatherNode.ScaffoldNode(
+                topBar = if (topBar != null) toFeatherNode(topBar) else null,
+                bottomBar = if (bottomBar != null) toFeatherNode(bottomBar) else null,
+                floatingActionButton = if (fab != null) toFeatherNode(fab) else null,
+                drawer = if (drawer != null) toFeatherNode(drawer) else null,
+                body = if (body != null) toFeatherNode(body) else FeatherNode.SpacerNode(1),
+                style = style
+            )
+        }
+        36 -> { // TopAppBar
+            val actionList = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { actionList.add(toFeatherNode(it)) }
+            }
+            FeatherNode.TopAppBarNode(
+                title = flatNode.title() ?: "",
+                subtitle = flatNode.subtitle(),
+                navigationIcon = flatNode.navigationIcon(),
+                navigationAction = flatNode.navigationAction(),
+                actions = actionList,
+                background = flatNode.background(),
+                contentColor = flatNode.color()
+            )
+        }
+        37 -> { // BottomAppBar
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.BottomAppBarNode(list, flatNode.background(), flatNode.color())
+        }
+        38 -> { // TabRow
+            val tabsList = mutableListOf<TabItemData>()
+            for (i in 0 until flatNode.tabItemsLength()) {
+                flatNode.tabItems(i)?.let {
+                    tabsList.add(TabItemData(it.title() ?: "", it.icon()))
+                }
+            }
+            FeatherNode.TabRowNode(tabsList, flatNode.currentPage(), flatNode.action() ?: "", flatNode.background(), flatNode.color())
+        }
+        39 -> { // Pager
+            val pageList = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.pagesLength()) {
+                flatNode.pages(i)?.let { pageList.add(toFeatherNode(it)) }
+            }
+            FeatherNode.PagerNode(pageList, flatNode.currentPage(), flatNode.action(), style)
+        }
+        40 -> { // Drawer
+            val header = flatNode.header(FlatNode())
+            val itemsList = mutableListOf<DrawerItemData>()
+            for (i in 0 until flatNode.drawerItemsLength()) {
+                flatNode.drawerItems(i)?.let {
+                    itemsList.add(DrawerItemData(it.title() ?: "", it.icon(), it.route(), it.action()))
+                }
+            }
+            FeatherNode.DrawerNode(if (header != null) toFeatherNode(header) else null, itemsList, style)
+        }
+        41 -> { // Navigator
+            val screensMap = mutableMapOf<String, FeatherNode>()
+            for (i in 0 until flatNode.screensLength()) {
+                flatNode.screens(i)?.let {
+                    val scRoute = it.route() ?: ""
+                    val scNode = it.node(FlatNode())
+                    if (scNode != null) {
+                        screensMap[scRoute] = toFeatherNode(scNode)
+                    }
+                }
+            }
+            FeatherNode.NavigatorNode(flatNode.initialRoute() ?: "", screensMap)
+        }
+        42 -> { // BottomTabs
+            val list = mutableListOf<FeatherNode>()
+            for (i in 0 until flatNode.childrenLength()) {
+                flatNode.children(i)?.let { list.add(toFeatherNode(it)) }
+            }
+            FeatherNode.BottomTabsNode(list, style)
+        }
+        43 -> { // Tab
+            val content = flatNode.content(FlatNode())
+            FeatherNode.TabNode(flatNode.title() ?: "", flatNode.initialRoute() ?: "", flatNode.name(), if (content != null) toFeatherNode(content) else FeatherNode.SpacerNode(1))
+        }
+        44 -> { // ForEach
+            FeatherNode.TextNode("ForEach mapping not expanded", style)
+        }
+        45 -> { // Condition
+            val thenNode = flatNode.then(FlatNode())
+            val otherwiseNode = flatNode.otherwise(FlatNode())
+            FeatherNode.ConditionNode(
+                flatNode.key() ?: "",
+                if (thenNode != null) toFeatherNode(thenNode) else FeatherNode.SpacerNode(1),
+                if (otherwiseNode != null) toFeatherNode(otherwiseNode) else null
+            )
+        }
+        46 -> FeatherNode.VideoPlayerNode(flatNode.url() ?: "", flatNode.autoplay(), flatNode.controls(), flatNode.loop(), flatNode.poster(), style) // VideoPlayer
+        47 -> FeatherNode.AudioPlayerNode(flatNode.url() ?: "", flatNode.autoplay(), flatNode.controls(), flatNode.loop(), style) // AudioPlayer
+        48 -> FeatherNode.WebViewNode(flatNode.url() ?: "", style) // WebView
+        49 -> { // GestureDetector
+            val child = flatNode.child(FlatNode())
+            FeatherNode.GestureDetectorNode(flatNode.onTap(), flatNode.onPan(), if (child != null) toFeatherNode(child) else FeatherNode.SpacerNode(1))
+        }
+        50 -> { // Clickable
+            val child = flatNode.child(FlatNode())
+            FeatherNode.ClickableNode(flatNode.action() ?: "", if (child != null) toFeatherNode(child) else FeatherNode.SpacerNode(1))
+        }
+        51 -> { // LongPressable
+            val child = flatNode.child(FlatNode())
+            FeatherNode.LongPressableNode(flatNode.action() ?: "", if (child != null) toFeatherNode(child) else FeatherNode.SpacerNode(1))
+        }
+        52 -> { // PullToRefresh
+            val content = flatNode.content(FlatNode())
+            FeatherNode.PullToRefreshNode(flatNode.refreshing(), flatNode.action() ?: "", if (content != null) toFeatherNode(content) else FeatherNode.SpacerNode(1))
+        }
+        53 -> { // Custom
+            val child = flatNode.child(FlatNode())
+            FeatherNode.CustomNode(flatNode.name() ?: "", flatNode.module() ?: "", flatNode.props() ?: "{}", if (child != null) toFeatherNode(child) else null)
+        }
+        else -> FeatherNode.TextNode("Unsupported flat widget: ${flatNode.type()}", style)
+    }
+}
+
+open class FlatStyle : Table() {
+    companion object {
+        fun getRootAsFlatStyle(bb: ByteBuffer): FlatStyle = getRootAsFlatStyle(bb, FlatStyle())
+        fun getRootAsFlatStyle(bb: ByteBuffer, obj: FlatStyle): FlatStyle {
+            bb.order(ByteOrder.LITTLE_ENDIAN)
+            return obj.__init(bb.getInt(bb.position()) + bb.position(), bb)
+        }
+    }
+    fun __init(_i: Int, _bb: ByteBuffer): FlatStyle {
+        __reset(_i, _bb)
+        return this
+    }
+    fun color(): String? = __string(__offset(4))
+    fun fontSize(): Int = if (__offset(6) != 0) bb.getInt(bb_pos + __offset(6)) else 0
+    fun fontWeight(): String? = __string(__offset(8))
+    fun fontStyle(): String? = __string(__offset(10))
+    fun textAlign(): String? = __string(__offset(12))
+    fun textDecoration(): String? = __string(__offset(14))
+    fun fontFamily(): String? = __string(__offset(16))
+    fun background(): String? = __string(__offset(18))
+    fun padding(): Int = if (__offset(20) != 0) bb.getInt(bb_pos + __offset(20)) else 0
+    fun paddingHorizontal(): Int = if (__offset(22) != 0) bb.getInt(bb_pos + __offset(22)) else 0
+    fun paddingVertical(): Int = if (__offset(24) != 0) bb.getInt(bb_pos + __offset(24)) else 0
+    fun paddingTop(): Int = if (__offset(26) != 0) bb.getInt(bb_pos + __offset(26)) else 0
+    fun paddingBottom(): Int = if (__offset(28) != 0) bb.getInt(bb_pos + __offset(28)) else 0
+    fun paddingStart(): Int = if (__offset(30) != 0) bb.getInt(bb_pos + __offset(30)) else 0
+    fun paddingEnd(): Int = if (__offset(32) != 0) bb.getInt(bb_pos + __offset(32)) else 0
+    fun margin(): Int = if (__offset(34) != 0) bb.getInt(bb_pos + __offset(34)) else 0
+    fun cornerRadius(): Int = if (__offset(36) != 0) bb.getInt(bb_pos + __offset(36)) else 0
+    fun borderColor(): String? = __string(__offset(38))
+    fun borderWidth(): Int = if (__offset(40) != 0) bb.getInt(bb_pos + __offset(40)) else 0
+    fun width(): String? = __string(__offset(42))
+    fun height(): String? = __string(__offset(44))
+    fun minWidth(): String? = __string(__offset(46))
+    fun minHeight(): String? = __string(__offset(48))
+    fun maxWidth(): String? = __string(__offset(50))
+    fun maxHeight(): String? = __string(__offset(52))
+    fun alignment(): String? = __string(__offset(54))
+    fun spacing(): Int = if (__offset(56) != 0) bb.getInt(bb_pos + __offset(56)) else 0
+    fun opacity(): Float = if (__offset(58) != 0) bb.getFloat(bb_pos + __offset(58)) else 1.0f
+    fun textColor(): String? = __string(__offset(60))
+    fun placeholderColor(): String? = __string(__offset(62))
+    fun contentMode(): String? = __string(__offset(64))
+    fun shadow(): String? = __string(__offset(66))
+    fun elevation(): Int = if (__offset(68) != 0) bb.getInt(bb_pos + __offset(68)) else 0
+    fun maxLines(): Int = if (__offset(70) != 0) bb.getInt(bb_pos + __offset(70)) else 0
+    fun flex(): Int = if (__offset(72) != 0) bb.getInt(bb_pos + __offset(72)) else 0
+    fun fillMaxWidth(): Boolean = if (__offset(74) != 0) bb.get(bb_pos + __offset(74)).toInt() != 0 else false
+    fun fillMaxHeight(): Boolean = if (__offset(76) != 0) bb.get(bb_pos + __offset(76)).toInt() != 0 else false
+    fun aspectRatio(): Float = if (__offset(78) != 0) bb.getFloat(bb_pos + __offset(78)) else 0.0f
+    fun gradient(): String? = __string(__offset(80))
+    fun clip(): Boolean = if (__offset(82) != 0) bb.get(bb_pos + __offset(82)).toInt() != 0 else false
+    fun keyboardType(): String? = __string(__offset(84))
+    fun maxLength(): Int = if (__offset(86) != 0) bb.getInt(bb_pos + __offset(86)) else 0
+    fun multiline(): Boolean = if (__offset(88) != 0) bb.get(bb_pos + __offset(88)).toInt() != 0 else false
+    fun secure(): Boolean = if (__offset(90) != 0) bb.get(bb_pos + __offset(90)).toInt() != 0 else false
+    fun direction(): String? = __string(__offset(92))
+    fun position(): String? = __string(__offset(94))
+    fun top(): Float = if (__offset(96) != 0) bb.getFloat(bb_pos + __offset(96)) else 0.0f
+    fun bottom(): Float = if (__offset(98) != 0) bb.getFloat(bb_pos + __offset(98)) else 0.0f
+    fun left(): Float = if (__offset(100) != 0) bb.getFloat(bb_pos + __offset(100)) else 0.0f
+    fun right(): Float = if (__offset(102) != 0) bb.getFloat(bb_pos + __offset(102)) else 0.0f
+    fun zIndex(): Float = if (__offset(104) != 0) bb.getFloat(bb_pos + __offset(104)) else 0.0f
+}
+
+open class FlatRadioOption : Table() {
+    fun __init(_i: Int, _bb: ByteBuffer): FlatRadioOption {
+        __reset(_i, _bb)
+        return this
+    }
+    fun value(): String? = __string(__offset(4))
+    fun label(): String? = __string(__offset(6))
+    fun color(): String? = __string(__offset(8))
+}
+
+open class FlatTabItem : Table() {
+    fun __init(_i: Int, _bb: ByteBuffer): FlatTabItem {
+        __reset(_i, _bb)
+        return this
+    }
+    fun title(): String? = __string(__offset(4))
+    fun icon(): String? = __string(__offset(6))
+}
+
+open class FlatDrawerItem : Table() {
+    fun __init(_i: Int, _bb: ByteBuffer): FlatDrawerItem {
+        __reset(_i, _bb)
+        return this
+    }
+    fun title(): String? = __string(__offset(4))
+    fun icon(): String? = __string(__offset(6))
+    fun route(): String? = __string(__offset(8))
+    fun action(): String? = __string(__offset(10))
+}
+
+open class FlatScreen : Table() {
+    fun __init(_i: Int, _bb: ByteBuffer): FlatScreen {
+        __reset(_i, _bb)
+        return this
+    }
+    fun route(): String? = __string(__offset(4))
+    fun node(obj: FlatNode): FlatNode? = if (__offset(6) != 0) obj.__init(__indirect(bb_pos + __offset(6)), bb) else null
+}
+
+open class FlatNode : Table() {
+    companion object {
+        fun getRootAsFlatNode(bb: ByteBuffer): FlatNode = getRootAsFlatNode(bb, FlatNode())
+        fun getRootAsFlatNode(bb: ByteBuffer, obj: FlatNode): FlatNode {
+            bb.order(ByteOrder.LITTLE_ENDIAN)
+            return obj.__init(bb.getInt(bb.position()) + bb.position(), bb)
+        }
+    }
+    fun __init(_i: Int, _bb: ByteBuffer): FlatNode {
+        __reset(_i, _bb)
+        return this
+    }
+    fun type(): Byte = if (__offset(4) != 0) bb.get(bb_pos + __offset(4)) else 0
+    fun id(): String? = __string(__offset(6))
+    fun text(): String? = __string(__offset(8))
+    fun action(): String? = __string(__offset(10))
+    fun enabled(): Boolean = if (__offset(12) != 0) bb.get(bb_pos + __offset(12)).toInt() != 0 else true
+    fun value(): String? = __string(__offset(14))
+    fun placeholder(): String? = __string(__offset(16))
+    fun label(): String? = __string(__offset(18))
+    fun src(): String? = __string(__offset(20))
+    fun alt(): String? = __string(__offset(22))
+    fun name(): String? = __string(__offset(24))
+    fun size(): Int = if (__offset(26) != 0) bb.getInt(bb_pos + __offset(26)) else 24
+    fun color(): String? = __string(__offset(28))
+    fun background(): String? = __string(__offset(30))
+    fun flex(): Int = if (__offset(32) != 0) bb.getInt(bb_pos + __offset(32)) else 1
+    fun thickness(): Int = if (__offset(34) != 0) bb.getInt(bb_pos + __offset(34)) else 1
+    fun indent(): Int = if (__offset(36) != 0) bb.getInt(bb_pos + __offset(36)) else 0
+    fun direction(): String? = __string(__offset(38))
+    fun ratio(): Float = if (__offset(40) != 0) bb.getFloat(bb_pos + __offset(40)) else 1.0f
+    fun checked(): Boolean = if (__offset(42) != 0) bb.get(bb_pos + __offset(42)).toInt() != 0 else false
+    fun trackColor(): String? = __string(__offset(44))
+    fun thumbColor(): String? = __string(__offset(46))
+    fun selected(): String? = __string(__offset(48))
+    fun min(): Float = if (__offset(50) != 0) bb.getFloat(bb_pos + __offset(50)) else 0.0f
+    fun max(): Float = if (__offset(52) != 0) bb.getFloat(bb_pos + __offset(52)) else 100.0f
+    fun step(): Float = if (__offset(54) != 0) bb.getFloat(bb_pos + __offset(54)) else 0.0f
+    fun progress(): Float = if (__offset(56) != 0) bb.getFloat(bb_pos + __offset(56)) else 0.0f
+    fun strokeWidth(): Int = if (__offset(58) != 0) bb.getInt(bb_pos + __offset(58)) else 4
+    fun visible(): Boolean = if (__offset(60) != 0) bb.get(bb_pos + __offset(60)).toInt() != 0 else true
+    fun title(): String? = __string(__offset(62))
+    fun confirmText(): String? = __string(__offset(64))
+    fun dismissText(): String? = __string(__offset(66))
+    fun confirmAction(): String? = __string(__offset(68))
+    fun dismissAction(): String? = __string(__offset(70))
+    fun message(): String? = __string(__offset(72))
+    fun actionText(): String? = __string(__offset(74))
+    fun count(): Int = if (__offset(76) != 0) bb.getInt(bb_pos + __offset(76)) else 0
+    fun iconColor(): String? = __string(__offset(78))
+    fun cornerRadius(): Int = if (__offset(80) != 0) bb.getInt(bb_pos + __offset(80)) else 0
+    fun subtitle(): String? = __string(__offset(82))
+    fun navigationIcon(): String? = __string(__offset(84))
+    fun navigationAction(): String? = __string(__offset(86))
+    fun currentPage(): Int = if (__offset(88) != 0) bb.getInt(bb_pos + __offset(88)) else 0
+    fun initialRoute(): String? = __string(__offset(90))
+    fun autoplay(): Boolean = if (__offset(92) != 0) bb.get(bb_pos + __offset(92)).toInt() != 0 else false
+    fun controls(): Boolean = if (__offset(94) != 0) bb.get(bb_pos + __offset(94)).toInt() != 0 else true
+    fun loop(): Boolean = if (__offset(96) != 0) bb.get(bb_pos + __offset(96)).toInt() != 0 else false
+    fun poster(): String? = __string(__offset(98))
+    fun url(): String? = __string(__offset(100))
+    fun onTap(): String? = __string(__offset(102))
+    fun onPan(): String? = __string(__offset(104))
+    fun ripple(): Boolean = if (__offset(106) != 0) bb.get(bb_pos + __offset(106)).toInt() != 0 else true
+    fun duration(): Int = if (__offset(108) != 0) bb.getInt(bb_pos + __offset(108)) else 0
+    fun refreshing(): Boolean = if (__offset(110) != 0) bb.get(bb_pos + __offset(110)).toInt() != 0 else false
+    fun module(): String? = __string(__offset(112))
+    fun props(): String? = __string(__offset(114))
+    fun style(obj: FlatStyle): FlatStyle? = if (__offset(116) != 0) obj.__init(__indirect(bb_pos + __offset(116)), bb) else null
+    
+    fun children(index: Int): FlatNode? = children(FlatNode(), index)
+    fun children(obj: FlatNode, index: Int): FlatNode? {
+        val o = __offset(118)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun childrenLength(): Int {
+        val o = __offset(118)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun options(index: Int): String? {
+        val o = __offset(120)
+        return if (o != 0) __string(__vector(o) + index * 4) else null
+    }
+    fun optionsLength(): Int {
+        val o = __offset(120)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun radioOptions(index: Int): FlatRadioOption? = radioOptions(FlatRadioOption(), index)
+    fun radioOptions(obj: FlatRadioOption, index: Int): FlatRadioOption? {
+        val o = __offset(122)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun radioOptionsLength(): Int {
+        val o = __offset(122)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun tabItems(index: Int): FlatTabItem? = tabItems(FlatTabItem(), index)
+    fun tabItems(obj: FlatTabItem, index: Int): FlatTabItem? {
+        val o = __offset(124)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun tabItemsLength(): Int {
+        val o = __offset(124)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun drawerItems(index: Int): FlatDrawerItem? = drawerItems(FlatDrawerItem(), index)
+    fun drawerItems(obj: FlatDrawerItem, index: Int): FlatDrawerItem? {
+        val o = __offset(126)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun drawerItemsLength(): Int {
+        val o = __offset(126)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun screens(index: Int): FlatScreen? = screens(FlatScreen(), index)
+    fun screens(obj: FlatScreen, index: Int): FlatScreen? {
+        val o = __offset(128)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun screensLength(): Int {
+        val o = __offset(128)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun key(): String? = __string(__offset(130))
+    fun prefix(): String? = __string(__offset(132))
+    fun fallback(): String? = __string(__offset(134))
+    
+    fun child(obj: FlatNode): FlatNode? = if (__offset(136) != 0) obj.__init(__indirect(bb_pos + __offset(136)), bb) else null
+    fun content(obj: FlatNode): FlatNode? = if (__offset(138) != 0) obj.__init(__indirect(bb_pos + __offset(138)), bb) else null
+    fun topBar(obj: FlatNode): FlatNode? = if (__offset(140) != 0) obj.__init(__indirect(bb_pos + __offset(140)), bb) else null
+    fun bottomBar(obj: FlatNode): FlatNode? = if (__offset(142) != 0) obj.__init(__indirect(bb_pos + __offset(142)), bb) else null
+    fun floatingActionButton(obj: FlatNode): FlatNode? = if (__offset(144) != 0) obj.__init(__indirect(bb_pos + __offset(144)), bb) else null
+    fun drawer(obj: FlatNode): FlatNode? = if (__offset(146) != 0) obj.__init(__indirect(bb_pos + __offset(146)), bb) else null
+    fun body(obj: FlatNode): FlatNode? = if (__offset(148) != 0) obj.__init(__indirect(bb_pos + __offset(148)), bb) else null
+    fun header(obj: FlatNode): FlatNode? = if (__offset(150) != 0) obj.__init(__indirect(bb_pos + __offset(150)), bb) else null
+
+    fun pages(index: Int): FlatNode? = pages(FlatNode(), index)
+    fun pages(obj: FlatNode, index: Int): FlatNode? {
+        val o = __offset(152)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun pagesLength(): Int {
+        val o = __offset(152)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun tabs(index: Int): FlatNode? = tabs(FlatNode(), index)
+    fun tabs(obj: FlatNode, index: Int): FlatNode? {
+        val o = __offset(154)
+        return if (o != 0) obj.__init(__indirect(__vector(o) + index * 4), bb) else null
+    }
+    fun tabsLength(): Int {
+        val o = __offset(154)
+        return if (o != 0) __vector_len(o) else 0
+    }
+
+    fun template(obj: FlatNode): FlatNode? = if (__offset(156) != 0) obj.__init(__indirect(bb_pos + __offset(156)), bb) else null
+    fun then(obj: FlatNode): FlatNode? = if (__offset(158) != 0) obj.__init(__indirect(bb_pos + __offset(158)), bb) else null
+    fun otherwise(obj: FlatNode): FlatNode? = if (__offset(160) != 0) obj.__init(__indirect(bb_pos + __offset(160)), bb) else null
+    fun startContent(obj: FlatNode): FlatNode? = if (__offset(162) != 0) obj.__init(__indirect(bb_pos + __offset(162)), bb) else null
+    fun endContent(obj: FlatNode): FlatNode? = if (__offset(164) != 0) obj.__init(__indirect(bb_pos + __offset(164)), bb) else null
 }

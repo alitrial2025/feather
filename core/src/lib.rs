@@ -21,6 +21,38 @@ pub fn get_greeting() -> String {
     "Hello from Feather Core (Rust)!".to_string()
 }
 
+#[uniffi::export]
+pub fn diff_layouts(old_json: String, new_json: String) -> Vec<bundle::diff::UiPatch> {
+    bundle::diff::diff_layouts(&old_json, &new_json)
+}
+
+#[uniffi::export]
+pub fn verify_manifest_signature(manifest_json: String, signature_b64: String, public_key_b64: String) -> bool {
+    use ring::signature::{self, UnparsedPublicKey};
+    use base64::{prelude::BASE64_STANDARD, Engine as _};
+    use serde_json::Value;
+
+    let Ok(mut val) = serde_json::from_str::<Value>(&manifest_json) else {
+        return false;
+    };
+    if let Some(obj) = val.as_object_mut() {
+        obj.remove("signature");
+    }
+    let Ok(cleaned_json_bytes) = serde_json::to_vec(&val) else {
+        return false;
+    };
+
+    let Ok(pubkey_bytes) = BASE64_STANDARD.decode(public_key_b64.trim()) else {
+        return false;
+    };
+    let Ok(sig_bytes) = BASE64_STANDARD.decode(signature_b64.trim()) else {
+        return false;
+    };
+
+    let peer_public_key = UnparsedPublicKey::new(&signature::ED25519, &pubkey_bytes);
+    peer_public_key.verify(&cleaned_json_bytes, &sig_bytes).is_ok()
+}
+
 #[derive(uniffi::Object)]
 pub struct Engine {
     state: Mutex<String>,
@@ -644,13 +676,15 @@ mod tests {
         let console_buffer = Arc::new(Mutex::new(Vec::new()));
         let action_payload = Arc::new(Mutex::new(String::new()));
         let pending_module_calls = Arc::new(Mutex::new(Vec::new()));
+        let event_queue = Arc::new(Mutex::new(Vec::new()));
         
         let mut runtime = WasmRuntime::new(
             &wasm_bytes, 
             state, 
             console_buffer,
             action_payload,
-            pending_module_calls
+            pending_module_calls,
+            event_queue
         ).expect("Failed to initialize WasmRuntime");
         
         runtime.call_action("trigger").expect("Failed to call action");
@@ -691,13 +725,15 @@ mod tests {
         let console_buffer = Arc::new(Mutex::new(Vec::new()));
         let action_payload = Arc::new(Mutex::new(String::new()));
         let pending_module_calls = Arc::new(Mutex::new(Vec::new()));
+        let event_queue = Arc::new(Mutex::new(Vec::new()));
         
         let mut runtime = WasmRuntime::new(
             &rewritten, 
             state, 
             console_buffer,
             action_payload,
-            pending_module_calls
+            pending_module_calls,
+            event_queue
         ).expect("Failed to initialize WasmRuntime");
         
         let result = runtime.call_action("trigger");
