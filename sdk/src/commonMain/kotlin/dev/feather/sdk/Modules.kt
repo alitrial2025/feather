@@ -17,7 +17,8 @@ data class ModuleCallPayload<T>(
 )
 
 inline fun <reified T> moduleCall(module: String, method: String, payload: T, resultStateKey: String? = null): String {
-    val id = "call_" + (1000..9999).random()
+    // Stable render-time descriptor; the core assigns a unique ID on dispatch.
+    val id = ""
     val request = ModuleCallPayload(
         id = id,
         module = module,
@@ -25,7 +26,7 @@ inline fun <reified T> moduleCall(module: String, method: String, payload: T, re
         payload = payload,
         resultStateKey = resultStateKey
     )
-    return Json.encodeToString(request)
+    return Json { encodeDefaults = true }.encodeToString(request)
 }
 
 /** Returns the current platform name ("android" or "ios"). */

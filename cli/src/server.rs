@@ -8,7 +8,13 @@ use qr2term::print_qr;
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use warp::Filter;
+use warp::{Filter, Reply};
+
+#[derive(Default)]
+struct LayoutBaseline {
+    root: Option<String>,
+    recovering: bool,
+}
 
 pub async fn run_server(config: DevServerConfig) {
     let host = config.host;
@@ -57,12 +63,15 @@ pub async fn run_server(config: DevServerConfig) {
     let tx = Arc::new(tx);
     let runtime = Arc::new(AppRuntime::default());
 
-    let previous_layout = Arc::new(std::sync::Mutex::new(None));
+    let previous_layout = Arc::new(std::sync::Mutex::new(LayoutBaseline::default()));
     {
         let initial_doc = render_document(&config, &runtime);
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&initial_doc) {
-            if let Some(root) = val.get("root") {
-                *previous_layout.lock().unwrap() = Some(root.to_string());
+            let mut baseline = previous_layout.lock().unwrap();
+            if val.get("type").and_then(|value| value.as_str()) == Some("render_error") {
+                baseline.recovering = true;
+            } else if let Some(root) = val.get("root") {
+                baseline.root = Some(root.to_string());
             }
         }
     }
@@ -71,7 +80,7 @@ pub async fn run_server(config: DevServerConfig) {
     let watcher_config = config.clone();
     let watcher_runtime = Arc::clone(&runtime);
     let watcher_prev = Arc::clone(&previous_layout);
-    tokio::spawn(async move {
+    tokio::task::spawn_blocking(move || {
         if let Err(e) = watch_files(watcher_config, tx_clone, watcher_runtime, watcher_prev) {
             eprintln!("File watcher error: {:?}", e);
         }
@@ -178,9 +187,12 @@ pub async fn run_server(config: DevServerConfig) {
              tx: Arc<broadcast::Sender<String>>,
              config: DevServerConfig,
              runtime: Arc<AppRuntime>,
-             prev_layout: Arc<std::sync::Mutex<Option<String>>>,
+             prev_layout: Arc<std::sync::Mutex<LayoutBaseline>>,
              origin: Option<String>| {
-                ws.on_upgrade(move |socket| handle_connection(socket, tx, config, runtime, prev_layout, origin))
+                if origin.as_deref().is_some_and(|value| !is_origin_allowed(value, config.port)) {
+                    return warp::reply::with_status("Forbidden origin", warp::http::StatusCode::FORBIDDEN).into_response();
+                }
+                ws.on_upgrade(move |socket| handle_connection(socket, tx, config, runtime, prev_layout, origin)).into_response()
             },
         );
 
@@ -207,7 +219,7 @@ fn watch_files(
     config: DevServerConfig,
     tx: Arc<broadcast::Sender<String>>,
     runtime: Arc<AppRuntime>,
-    previous_layout: Arc<std::sync::Mutex<Option<String>>>,
+    previous_layout: Arc<std::sync::Mutex<LayoutBaseline>>,
 ) -> notify::Result<()> {
     let (std_tx, std_rx) = std::sync::mpsc::channel();
 
@@ -219,53 +231,92 @@ fn watch_files(
         config.project_path.display()
     );
 
-    for res in std_rx {
-        match res {
-            Ok(event) => {
-                // Ignore build and cache directories
-                let should_ignore = event.paths.iter().any(|path| {
-                    let p = path.to_string_lossy();
-                    p.contains("/build/") || 
-                    p.contains("/.gradle/") || 
-                    p.contains("/.idea/") || 
-                    p.contains("/.git/") ||
-                    p.contains("/.featherbundle/") ||
-                    p.contains("/node_modules/")
-                });
-
-                if should_ignore {
-                    continue;
+    // Wait for a quiet editor-save window. A rename/create burst is one update.
+    loop {
+        let first = match std_rx.recv() {
+            Ok(event) => event,
+            Err(_) => break,
+        };
+        let mut paths = std::collections::HashSet::new();
+        collect_refresh_paths(first, &config, &mut paths);
+        if paths.is_empty() { continue; }
+        // Bound the batch as well as the quiet window, so a continuous writer
+        // cannot postpone updates indefinitely.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        while std::time::Instant::now() < deadline {
+            match std_rx.recv_timeout(std::time::Duration::from_millis(75)) {
+                Ok(event) => collect_refresh_paths(event, &config, &mut paths),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        if config.manifest.runtime.as_deref() == Some("kotlin-js") {
+            match crate::compiler::compile_javascript(&config.project_path) {
+                Ok(()) => {
+                    handle_layout_update(&config, &runtime, &tx, &previous_layout);
+                    let _ = tx.send(serde_json::json!({"type":"hot-reload-js", "path":"app.js"}).to_string());
                 }
-
-                let changed_wasm = event
-                    .paths
-                    .iter()
-                    .any(|path| path.extension().and_then(|ext| ext.to_str()) == Some("wasm"));
-                
-                if changed_wasm {
-                    println!("WASM changed: {:?}", event.paths);
-                    let _ = preserve_and_refresh_state(&runtime, &tx, || {
-                        crate::bundler::build_bundle(&config, &runtime)
-                    });
-                    let _ = tx.send(
-                        serde_json::json!({
-                            "type": "hot-reload-wasm",
-                            "path": "app.wasm"
-                        })
-                        .to_string(),
-                    );
-                } else {
-                    println!("File changed: {:?}", event.paths);
-                    let _ = preserve_and_refresh_state(&runtime, &tx, || {
-                        handle_layout_update(&config, &runtime, &tx, &previous_layout)
-                    });
+                Err(error) => {
+                    previous_layout.lock().unwrap().recovering = true;
+                    let _ = tx.send(serde_json::json!({
+                        "type": "render_error", "protocol_version": 1,
+                        "root": {"type": "Text", "text": "Kotlin compilation failed"},
+                        "diagnostics": [{"level": "error", "message": error}]
+                    }).to_string());
                 }
             }
-            Err(e) => eprintln!("watch error: {:?}", e),
+            continue;
+        }
+        let changed_wasm = paths.contains(&config.project_path.join(".feather/app.wasm"));
+        if changed_wasm {
+            let result = preserve_and_refresh_state(&runtime, &tx, || {
+                crate::bundler::build_bundle(&config, &runtime)
+            });
+            match result {
+                Ok(_) => { let _ = tx.send(serde_json::json!({
+                    "type": "hot-reload-wasm", "path": "app.wasm"
+                }).to_string()); }
+                Err(error) => eprintln!("WASM refresh failed: {error}"),
+            }
+        } else {
+            println!("Refreshing {} changed input(s)", paths.len());
+            preserve_and_refresh_state(&runtime, &tx, || {
+                handle_layout_update(&config, &runtime, &tx, &previous_layout)
+            });
         }
     }
 
     Ok(())
+}
+
+fn collect_refresh_paths(
+    event: notify::Result<notify::Event>,
+    config: &DevServerConfig,
+    paths: &mut std::collections::HashSet<std::path::PathBuf>,
+) {
+    match event {
+        Ok(event) if matches!(event.kind, notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_)) => {
+            paths.extend(event.paths.into_iter().filter(|path| is_refresh_input(config, path)));
+        }
+        Err(error) => eprintln!("watch error: {error}"),
+        _ => {}
+    }
+}
+
+fn is_refresh_input(config: &DevServerConfig, path: &std::path::Path) -> bool {
+    // Check explicit compiler outputs before excluding build/cache directories.
+    if config.generated_ir_path.as_deref() == Some(path)
+        || config.fallback_ir_path.as_deref() == Some(path)
+        || path == config.project_path.join(".feather/app.wasm") {
+        return true;
+    }
+    let Ok(relative) = path.strip_prefix(&config.project_path) else { return false; };
+    if relative.components().any(|part| matches!(part.as_os_str().to_str(),
+        Some("build" | "target" | "dist" | ".feather" | ".featherbundle" | ".git" | ".gradle" | ".idea" | "node_modules"))) {
+        return false;
+    }
+    path == config.entry_path || config.asset_paths.iter().any(|assets| path.starts_with(assets))
+        || matches!(path.extension().and_then(|ext| ext.to_str()), Some("kt" | "fthr"))
 }
 
 async fn handle_connection(
@@ -273,7 +324,7 @@ async fn handle_connection(
     tx: Arc<broadcast::Sender<String>>,
     config: DevServerConfig,
     runtime: Arc<AppRuntime>,
-    previous_layout: Arc<std::sync::Mutex<Option<String>>>,
+    previous_layout: Arc<std::sync::Mutex<LayoutBaseline>>,
     origin: Option<String>,
 ) {
     if let Some(ref origin_str) = origin {
@@ -326,7 +377,7 @@ async fn handle_connection(
                                         eprintln!("📱 🚨 [DEVICE ERROR]: {}", err_msg);
                                     }
                                     true
-                                } else if msg_type == "devtools_state_update" {
+                                } else if msg_type == "devtools_state_update" || msg_type == "state_update" {
                                     if let (Some(key), Some(value)) = (
                                         json.get("key").and_then(|v| v.as_str()),
                                         json.get("value")
@@ -335,15 +386,25 @@ async fn handle_connection(
                                         event_runtime.set_state(key, &val_str);
                                         
                                         let sync_packet = serde_json::json!({
-                                            "type": "state_update",
+                                            "type": if msg_type == "devtools_state_update" { "devtools_state_update" } else { "state_update" },
                                             "key": key,
                                             "value": value
                                         });
                                         let _ = event_tx.send(sync_packet.to_string());
                                     }
                                     true
+                                } else if msg_type == "runtime_state" {
+                                    if let Some(state) = json.get("state").and_then(|value| value.as_object()) {
+                                        for (key, value) in state { event_runtime.set_state(key, &value.to_string()); }
+                                    }
+                                    true
                                 } else if msg_type == "action" {
-                                    let _ = event_tx.send(text.to_string());
+                                    if event_config.manifest.runtime.as_deref() == Some("kotlin-js") {
+                                        apply_action_event(text, &event_runtime);
+                                        handle_layout_update(&event_config, &event_runtime, &event_tx, &event_prev);
+                                    } else {
+                                        let _ = event_tx.send(text.to_string());
+                                    }
                                     true
                                 } else { false }
                             } else { false }
@@ -381,7 +442,7 @@ fn handle_layout_update(
     config: &DevServerConfig,
     runtime: &Arc<AppRuntime>,
     tx: &Arc<broadcast::Sender<String>>,
-    previous_layout: &Arc<std::sync::Mutex<Option<String>>>,
+    previous_layout: &Arc<std::sync::Mutex<LayoutBaseline>>,
 ) -> String {
     let new_doc = render_document(config, runtime);
     
@@ -393,6 +454,13 @@ fn handle_layout_update(
         }
     };
     
+    // Syntax errors are diagnostics, never the baseline for the next patch.
+    if new_val.get("type").and_then(|value| value.as_str()) == Some("render_error") {
+        previous_layout.lock().unwrap().recovering = true;
+        let _ = tx.send(new_doc.clone());
+        return new_doc;
+    }
+
     let new_root = match new_val.get("root") {
         Some(r) => r.to_string(),
         None => {
@@ -402,7 +470,11 @@ fn handle_layout_update(
     };
 
     let mut prev = previous_layout.lock().unwrap();
-    if let Some(ref old_root) = *prev {
+    if prev.recovering {
+        // Hosts may have displayed an error tree; a delta against the last good
+        // tree would then apply to the wrong document. Restore a full snapshot.
+        let _ = tx.send(new_doc.clone());
+    } else if let Some(ref old_root) = prev.root {
         let patches = feather_core::diff_layouts(old_root.clone(), new_root.clone());
         if !patches.is_empty() {
             let patch_msg = serde_json::json!({
@@ -415,7 +487,8 @@ fn handle_layout_update(
         let _ = tx.send(new_doc.clone());
     }
     
-    *prev = Some(new_root);
+    prev.root = Some(new_root);
+    prev.recovering = false;
     new_doc
 }
 
@@ -454,67 +527,109 @@ where
     result
 }
 
-fn extract_host(origin: &str) -> Option<&str> {
-    let host_part = if origin.starts_with("http://") {
-        &origin[7..]
-    } else if origin.starts_with("https://") {
-        &origin[8..]
-    } else {
-        return None;
-    };
+// Browser origins must identify this server, not merely a private-looking hostname.
+fn is_origin_allowed(origin: &str, port: u16) -> bool {
+    let Ok(uri) = origin.parse::<warp::http::Uri>() else { return false; };
+    let Some(scheme) = uri.scheme_str() else { return false; };
+    if !matches!(scheme, "http" | "https") || uri.query().is_some() || !matches!(uri.path(), "" | "/") {
+        return false;
+    }
+    let Some(authority) = uri.authority() else { return false; };
+    if authority.as_str().contains('@') { return false; }
+    let actual_port = authority.port_u16().unwrap_or(if scheme == "https" { 443 } else { 80 });
+    let local_host = matches!(authority.host(), "localhost" | "127.0.0.1" | "[::1]");
+    if local_host && actual_port == port { return true; }
+    get_public_url(port).is_some_and(|public_url| {
+        public_url.parse::<warp::http::Uri>().is_ok_and(|public| {
+            public.scheme_str() == Some(scheme) && public.authority() == Some(authority)
+        })
+    })
+}
 
-    let host_part = host_part.trim_end_matches('/');
+#[cfg(test)]
+mod security_tests {
+    use super::*;
 
-    // If it's an IPv6 address, it starts with '['
-    if host_part.starts_with('[') {
-        if let Some(close_bracket_idx) = host_part.find(']') {
-            return Some(&host_part[..close_bracket_idx + 1]);
+    #[test]
+    fn accepts_local_devtools_origins() {
+        for origin in ["http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080"] {
+            assert!(is_origin_allowed(origin, 8080), "{origin}");
         }
     }
 
-    // For IPv4 or domain name, find the colon separating the port
-    match host_part.find(':') {
-        Some(idx) => Some(&host_part[..idx]),
-        None => Some(host_part),
+    #[test]
+    fn rejects_foreign_origins_and_prefix_spoofing() {
+        for origin in ["http://localhost:9999", "https://evil.ngrok.io", "http://10.evil.test:8080",
+            "http://192.168.evil.test:8080", "http://172.16.evil.test:8080", "null",
+            "http://localhost:8080@evil.test", "http://localhost:8080/path", "http://localhost:8080?x=1"] {
+            assert!(!is_origin_allowed(origin, 8080), "{origin}");
+        }
     }
 }
 
-fn is_origin_allowed(origin: &str, port: u16) -> bool {
-    let host = match extract_host(origin) {
-        Some(h) => h,
-        None => return false,
-    };
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+    use std::path::PathBuf;
 
-    // Standard local loopbacks
-    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
-        return true;
-    }
-
-    // Local private subnets (e.g. 192.168.x.x, 10.x.x.x, 172.16.x.x-172.31.x.x)
-    if host.starts_with("192.168.") || host.starts_with("10.") {
-        return true;
-    }
-    if host.starts_with("172.") {
-        if let Some(second_octet) = host.split('.').nth(1).and_then(|s| s.parse::<u8>().ok()) {
-            if second_octet >= 16 && second_octet <= 31 {
-                return true;
-            }
+    fn config() -> DevServerConfig {
+        DevServerConfig {
+            project_path: PathBuf::from("/app"),
+            entry_path: PathBuf::from("/app/src/App.kt"),
+            asset_paths: vec![PathBuf::from("/app/assets")],
+            bundle_path: PathBuf::from("/app/.featherbundle"),
+            generated_ir_path: Some(PathBuf::from("/app/build/generated/app.json")),
+            fallback_ir_path: Some(PathBuf::from("/app/.feather/layout.json")),
+            host: "127.0.0.1".parse().unwrap(),
+            port: 8080,
+            tunnel: false,
+            manifest: serde_json::from_str(r#"{"entry":"src/App.kt"}"#).unwrap(),
         }
     }
 
-    // Tunnel/workstation domains
-    if host.ends_with(".ngrok.io") || host.ends_with(".ngrok-free.app") {
-        return true;
-    }
-
-    // Dynamic public tunnel/GCloud/Codespaces validation
-    if let Some(public_url) = get_public_url(port) {
-        if let Some(p_host) = extract_host(&public_url) {
-            if host == p_host {
-                return true;
-            }
+    #[test]
+    fn watches_source_assets_and_explicit_compiler_outputs() {
+        let config = config();
+        for path in ["/app/src/App.kt", "/app/ui/screen.fthr", "/app/assets/cover.png",
+            "/app/build/generated/app.json", "/app/.feather/layout.json", "/app/.feather/app.wasm"] {
+            assert!(is_refresh_input(&config, std::path::Path::new(path)), "{path}");
         }
     }
 
-    false
+    #[test]
+    fn excludes_generated_outputs_keys_logs_and_outside_paths() {
+        let config = config();
+        for path in ["/app/.featherbundle/app.feather.json", "/app/.feather/private_key.der",
+            "/app/server.log", "/app/build/cache.kt", "/app/.git/source.kt", "/app/node_modules/app.fthr",
+            "/elsewhere/App.kt", "/app/target/generated.kt", "/app/.feather/cache/generated.kt"] {
+            assert!(!is_refresh_input(&config, std::path::Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn read_notifications_do_not_trigger_refresh() {
+        let mut paths = std::collections::HashSet::new();
+        let path = PathBuf::from("/app/src/App.kt");
+        collect_refresh_paths(Ok(notify::Event::new(notify::EventKind::Access(
+            notify::event::AccessKind::Read)).add_path(path.clone())), &config(), &mut paths);
+        assert!(paths.is_empty());
+        collect_refresh_paths(Ok(notify::Event::new(notify::EventKind::Modify(
+            notify::event::ModifyKind::Any)).add_path(path.clone())), &config(), &mut paths);
+        assert_eq!(paths, std::collections::HashSet::from([path]));
+    }
+
+    #[test]
+    fn refresh_restores_nested_typed_state_and_publishes_it() {
+        let runtime = Arc::new(AppRuntime::default());
+        let state = serde_json::json!({"count": 8, "items": [true, null, {"name": "Ada"}]});
+        runtime.set_state("session", &state.to_string());
+        let (sender, mut receiver) = broadcast::channel(16);
+        preserve_and_refresh_state(&runtime, &Arc::new(sender), || {
+            runtime.set_state("session", "0");
+        });
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&runtime.get_state("session").unwrap()).unwrap(), state);
+        let update: serde_json::Value = serde_json::from_str(&receiver.try_recv().unwrap()).unwrap();
+        assert_eq!(update["type"], "state_update");
+        assert_eq!(update["value"], state);
+    }
 }

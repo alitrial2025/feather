@@ -1,0 +1,44 @@
+name: FeatherHost
+options:
+  bundleIdPrefix: dev.feather
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    PRODUCT_BUNDLE_IDENTIFIER: dev.feather.host
+    HEADER_SEARCH_PATHS: '$(inherited) $(SRCROOT)/FeatherHost'
+    SWIFT_INCLUDE_PATHS: '$(inherited) $(SRCROOT)/FeatherHost'
+    OTHER_SWIFT_FLAGS: '$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/FeatherHost/feather_coreFFI.modulemap'
+    LIBRARY_SEARCH_PATHS: '$(inherited) $(SRCROOT)/../../build/native/ios-sim'
+    OTHER_LDFLAGS: '$(inherited) -lfeather_core -lc++ -liconv'
+targets:
+  FeatherHost:
+    type: application
+    platform: iOS
+    dependencies:
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+    sources:
+      - path: FeatherHost
+      - path: build/runtime-assets/feather
+        type: folder
+        buildPhase: resources
+    info:
+      path: build/Info.plist
+      properties:
+        CFBundleDisplayName: Feather
+        UILaunchScreen: {}
+        FeatherBundlePublicKey: '$(FEATHER_BUNDLE_PUBLIC_KEY)'
+        NSCameraUsageDescription: Scan a Feather development QR code or use camera modules.
+        NSMicrophoneUsageDescription: Use audio recording modules.
+        NSLocationWhenInUseUsageDescription: Use location modules.
+        NSPhotoLibraryUsageDescription: Select media for an application.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
+schemes:
+  FeatherHost:
+    build:
+      targets:
+        FeatherHost: all

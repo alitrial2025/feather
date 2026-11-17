@@ -381,6 +381,19 @@ fileprivate class UniffiHandleMap<T> {
 // Public interface members begin here.
 
 
+fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+    typealias FfiType = UInt32
+    typealias SwiftType = UInt32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -459,121 +472,69 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 public protocol AppRuntimeProtocol : AnyObject {
-    
-    /**
-     * Process an action event from the host and update typed state.
-     */
-    func applyActionEvent(payload: String) 
-    
-    /**
-     * Checks a list of required modules against registered modules.
-     * Returns a list of missing module names/errors and reports them as diagnostics.
-     */
+
+    func applyActionEvent(payload: String)
+
     func checkRequirements(requiredModules: [BundleModule], hostPlatform: String)  -> [String]
-    
-    /**
-     * Deliver an async native module error back into the runtime.
-     */
-    func deliverModuleError(callbackId: String, error: String) 
-    
-    /**
-     * Deliver an async native module result back into the runtime.
-     * Called by the native shell when a module callback completes (e.g., Camera returns a URI).
-     */
-    func deliverModuleResult(callbackId: String, resultJson: String) 
-    
-    /**
-     * Drain and return all console log messages buffered since the last call.
-     * Used by native shells to display Kotlin errors in a diagnostics overlay.
-     */
+
+    func deliverModuleError(callbackId: String, error: String)
+
+    func deliverModuleResult(callbackId: String, resultJson: String)
+
     func drainConsoleLogs()  -> [String]
-    
-    /**
-     * Drain and return all diagnostics buffered since the last call.
-     */
+
     func drainDiagnostics()  -> [Diagnostic]
-    
-    /**
-     * Drain and return all pending module calls as JSON strings.
-     */
+
     func drainModuleCalls()  -> [String]
-    
-    /**
-     * Get all state as JSON.
-     */
+
+    func drainNativeEvents()  -> [NativeEvent]
+
     func getAllState()  -> String
-    
-    /**
-     * Returns a list of all currently registered native modules.
-     */
+
     func getRegisteredModules()  -> [ModuleInfo]
-    
-    /**
-     * Get a state value as JSON string.
-     */
+
     func getState(key: String)  -> String?
-    
-    /**
-     * Check if a WASM engine is loaded.
-     */
+
+    func hasJavascript()  -> Bool
+
     func hasWasm()  -> Bool
-    
+
+    func hotReloadWasm(wasmBytes: Data) throws
+
+    func loadJavascript(source: String) throws
+
     /**
-     * Hot-reload: Replace the running WASM module with a new binary
-     * without losing state. The state map is preserved across reloads.
+     * Load code only after the app-pinned key authenticates the manifest and
+     * the signed JavaScript artifact metadata matches the exact source bytes.
      */
-    func hotReloadWasm(wasmBytes: Data) throws 
-    
-    /**
-     * Load and instantiate a WebAssembly module
-     */
-    func loadWasm(wasmBytes: Data) throws 
-    
-    /**
-     * Check if the UI needs a re-render.
-     */
+    func loadSignedJavascript(manifestJson: String, source: String, publicKey: String) throws
+
+    func loadWasm(wasmBytes: Data) throws
+
     func pollRenderNeeded()  -> Bool
-    
-    /**
-     * Register a native platform module (e.g. Camera, Network, DB)
-     */
-    func registerModule(name: String, module: NativeModule) 
-    
-    /**
-     * Execute the WASM app's render_ui and return the JSON render tree.
-     */
+
+    func pushNativeEvent(name: String, payload: String)
+
+    func registerModule(name: String, module: NativeModule)
+
+    func renderJavascript() throws  -> String
+
+    func renderJavascriptDocument() throws  -> String
+
     func renderWasm()  -> String?
-    
-    /**
-     * Report a new diagnostic message.
-     */
-    func reportDiagnostic(level: String, message: String) 
-    
-    /**
-     * Resolve StateText and Condition nodes in the render payload.
-     */
+
+    func reportDiagnostic(level: String, message: String)
+
     func resolveStateTextNodes(jsonPayload: String)  -> String
-    
-    /**
-     * Set a state value directly (for programmatic state updates).
-     */
-    func setState(key: String, jsonValue: String) 
-    
-    /**
-     * Look up a state value as a boolean.
-     */
+
+    func setState(key: String, jsonValue: String)
+
     func stateBool(key: String)  -> Bool
-    
-    /**
-     * Look up a state value as a list (for ForEach).
-     */
+
     func stateList(key: String)  -> [String]
-    
-    /**
-     * Look up a single state value as a display string.
-     */
+
     func stateValue(key: String)  -> String?
-    
+
 }
 
 open class AppRuntime:
@@ -621,23 +582,16 @@ public convenience init() {
         try! rustCall { uniffi_feather_core_fn_free_appruntime(pointer, $0) }
     }
 
-    
 
-    
-    /**
-     * Process an action event from the host and update typed state.
-     */
+
+
 open func applyActionEvent(payload: String) {try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_apply_action_event(self.uniffiClonePointer(),
         FfiConverterString.lower(payload),$0
     )
 }
 }
-    
-    /**
-     * Checks a list of required modules against registered modules.
-     * Returns a list of missing module names/errors and reports them as diagnostics.
-     */
+
 open func checkRequirements(requiredModules: [BundleModule], hostPlatform: String) -> [String] {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_check_requirements(self.uniffiClonePointer(),
@@ -646,10 +600,7 @@ open func checkRequirements(requiredModules: [BundleModule], hostPlatform: Strin
     )
 })
 }
-    
-    /**
-     * Deliver an async native module error back into the runtime.
-     */
+
 open func deliverModuleError(callbackId: String, error: String) {try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_deliver_module_error(self.uniffiClonePointer(),
         FfiConverterString.lower(callbackId),
@@ -657,11 +608,7 @@ open func deliverModuleError(callbackId: String, error: String) {try! rustCall()
     )
 }
 }
-    
-    /**
-     * Deliver an async native module result back into the runtime.
-     * Called by the native shell when a module callback completes (e.g., Camera returns a URI).
-     */
+
 open func deliverModuleResult(callbackId: String, resultJson: String) {try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_deliver_module_result(self.uniffiClonePointer(),
         FfiConverterString.lower(callbackId),
@@ -669,61 +616,49 @@ open func deliverModuleResult(callbackId: String, resultJson: String) {try! rust
     )
 }
 }
-    
-    /**
-     * Drain and return all console log messages buffered since the last call.
-     * Used by native shells to display Kotlin errors in a diagnostics overlay.
-     */
+
 open func drainConsoleLogs() -> [String] {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_drain_console_logs(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Drain and return all diagnostics buffered since the last call.
-     */
+
 open func drainDiagnostics() -> [Diagnostic] {
     return try!  FfiConverterSequenceTypeDiagnostic.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_drain_diagnostics(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Drain and return all pending module calls as JSON strings.
-     */
+
 open func drainModuleCalls() -> [String] {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_drain_module_calls(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Get all state as JSON.
-     */
+
+open func drainNativeEvents() -> [NativeEvent] {
+    return try!  FfiConverterSequenceTypeNativeEvent.lift(try! rustCall() {
+    uniffi_feather_core_fn_method_appruntime_drain_native_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+
 open func getAllState() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_get_all_state(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Returns a list of all currently registered native modules.
-     */
+
 open func getRegisteredModules() -> [ModuleInfo] {
     return try!  FfiConverterSequenceTypeModuleInfo.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_get_registered_modules(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Get a state value as JSON string.
-     */
+
 open func getState(key: String) -> String? {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_get_state(self.uniffiClonePointer(),
@@ -731,51 +666,70 @@ open func getState(key: String) -> String? {
     )
 })
 }
-    
-    /**
-     * Check if a WASM engine is loaded.
-     */
+
+open func hasJavascript() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_feather_core_fn_method_appruntime_has_javascript(self.uniffiClonePointer(),$0
+    )
+})
+}
+
 open func hasWasm() -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_has_wasm(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Hot-reload: Replace the running WASM module with a new binary
-     * without losing state. The state map is preserved across reloads.
-     */
+
 open func hotReloadWasm(wasmBytes: Data)throws  {try rustCallWithError(FfiConverterTypeModuleError.lift) {
     uniffi_feather_core_fn_method_appruntime_hot_reload_wasm(self.uniffiClonePointer(),
         FfiConverterData.lower(wasmBytes),$0
     )
 }
 }
-    
+
+open func loadJavascript(source: String)throws  {try rustCallWithError(FfiConverterTypeModuleError.lift) {
+    uniffi_feather_core_fn_method_appruntime_load_javascript(self.uniffiClonePointer(),
+        FfiConverterString.lower(source),$0
+    )
+}
+}
+
     /**
-     * Load and instantiate a WebAssembly module
+     * Load code only after the app-pinned key authenticates the manifest and
+     * the signed JavaScript artifact metadata matches the exact source bytes.
      */
+open func loadSignedJavascript(manifestJson: String, source: String, publicKey: String)throws  {try rustCallWithError(FfiConverterTypeModuleError.lift) {
+    uniffi_feather_core_fn_method_appruntime_load_signed_javascript(self.uniffiClonePointer(),
+        FfiConverterString.lower(manifestJson),
+        FfiConverterString.lower(source),
+        FfiConverterString.lower(publicKey),$0
+    )
+}
+}
+
 open func loadWasm(wasmBytes: Data)throws  {try rustCallWithError(FfiConverterTypeModuleError.lift) {
     uniffi_feather_core_fn_method_appruntime_load_wasm(self.uniffiClonePointer(),
         FfiConverterData.lower(wasmBytes),$0
     )
 }
 }
-    
-    /**
-     * Check if the UI needs a re-render.
-     */
+
 open func pollRenderNeeded() -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_poll_render_needed(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Register a native platform module (e.g. Camera, Network, DB)
-     */
+
+open func pushNativeEvent(name: String, payload: String) {try! rustCall() {
+    uniffi_feather_core_fn_method_appruntime_push_native_event(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(payload),$0
+    )
+}
+}
+
 open func registerModule(name: String, module: NativeModule) {try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_register_module(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -783,20 +737,28 @@ open func registerModule(name: String, module: NativeModule) {try! rustCall() {
     )
 }
 }
-    
-    /**
-     * Execute the WASM app's render_ui and return the JSON render tree.
-     */
+
+open func renderJavascript()throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeModuleError.lift) {
+    uniffi_feather_core_fn_method_appruntime_render_javascript(self.uniffiClonePointer(),$0
+    )
+})
+}
+
+open func renderJavascriptDocument()throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeModuleError.lift) {
+    uniffi_feather_core_fn_method_appruntime_render_javascript_document(self.uniffiClonePointer(),$0
+    )
+})
+}
+
 open func renderWasm() -> String? {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_render_wasm(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-    /**
-     * Report a new diagnostic message.
-     */
+
 open func reportDiagnostic(level: String, message: String) {try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_report_diagnostic(self.uniffiClonePointer(),
         FfiConverterString.lower(level),
@@ -804,10 +766,7 @@ open func reportDiagnostic(level: String, message: String) {try! rustCall() {
     )
 }
 }
-    
-    /**
-     * Resolve StateText and Condition nodes in the render payload.
-     */
+
 open func resolveStateTextNodes(jsonPayload: String) -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_resolve_state_text_nodes(self.uniffiClonePointer(),
@@ -815,10 +774,7 @@ open func resolveStateTextNodes(jsonPayload: String) -> String {
     )
 })
 }
-    
-    /**
-     * Set a state value directly (for programmatic state updates).
-     */
+
 open func setState(key: String, jsonValue: String) {try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_set_state(self.uniffiClonePointer(),
         FfiConverterString.lower(key),
@@ -826,10 +782,7 @@ open func setState(key: String, jsonValue: String) {try! rustCall() {
     )
 }
 }
-    
-    /**
-     * Look up a state value as a boolean.
-     */
+
 open func stateBool(key: String) -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_state_bool(self.uniffiClonePointer(),
@@ -837,10 +790,7 @@ open func stateBool(key: String) -> Bool {
     )
 })
 }
-    
-    /**
-     * Look up a state value as a list (for ForEach).
-     */
+
 open func stateList(key: String) -> [String] {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_state_list(self.uniffiClonePointer(),
@@ -848,10 +798,7 @@ open func stateList(key: String) -> [String] {
     )
 })
 }
-    
-    /**
-     * Look up a single state value as a display string.
-     */
+
 open func stateValue(key: String) -> String? {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_appruntime_state_value(self.uniffiClonePointer(),
@@ -859,7 +806,7 @@ open func stateValue(key: String) -> String? {
     )
 })
 }
-    
+
 
 }
 
@@ -909,11 +856,11 @@ public func FfiConverterTypeAppRuntime_lower(_ value: AppRuntime) -> UnsafeMutab
 
 
 public protocol EngineProtocol : AnyObject {
-    
+
     func getState()  -> String
-    
-    func start() 
-    
+
+    func start()
+
 }
 
 open class Engine:
@@ -961,22 +908,22 @@ public convenience init() {
         try! rustCall { uniffi_feather_core_fn_free_engine(pointer, $0) }
     }
 
-    
 
-    
+
+
 open func getState() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_feather_core_fn_method_engine_get_state(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
 open func start() {try! rustCall() {
     uniffi_feather_core_fn_method_engine_start(self.uniffiClonePointer(),$0
     )
 }
 }
-    
+
 
 }
 
@@ -1026,11 +973,11 @@ public func FfiConverterTypeEngine_lower(_ value: Engine) -> UnsafeMutableRawPoi
 
 
 public protocol NativeCallback : AnyObject {
-    
-    func onSuccess(result: String) 
-    
-    func onError(error: String) 
-    
+
+    func onSuccess(result: String)
+
+    func onError(error: String)
+
 }
 
 open class NativeCallbackImpl:
@@ -1071,23 +1018,23 @@ open class NativeCallbackImpl:
         try! rustCall { uniffi_feather_core_fn_free_nativecallback(pointer, $0) }
     }
 
-    
 
-    
+
+
 open func onSuccess(result: String) {try! rustCall() {
     uniffi_feather_core_fn_method_nativecallback_on_success(self.uniffiClonePointer(),
         FfiConverterString.lower(result),$0
     )
 }
 }
-    
+
 open func onError(error: String) {try! rustCall() {
     uniffi_feather_core_fn_method_nativecallback_on_error(self.uniffiClonePointer(),
         FfiConverterString.lower(error),$0
     )
 }
 }
-    
+
 
 }
 // Magic number for the Rust proxy to call using the same mechanism as every other method,
@@ -1120,7 +1067,7 @@ fileprivate struct UniffiCallbackInterfaceNativeCallback {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1144,7 +1091,7 @@ fileprivate struct UniffiCallbackInterfaceNativeCallback {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1215,13 +1162,15 @@ public func FfiConverterTypeNativeCallback_lower(_ value: NativeCallback) -> Uns
 
 
 public protocol NativeModule : AnyObject {
-    
+
     func getInfo()  -> ModuleInfo
-    
+
+    func getWidgets()  -> [String]
+
     func callSync(action: String, payload: String) throws  -> String
-    
-    func callAsync(action: String, payload: String, callback: NativeCallback) 
-    
+
+    func callAsync(action: String, payload: String, callback: NativeCallback)
+
 }
 
 open class NativeModuleImpl:
@@ -1262,16 +1211,23 @@ open class NativeModuleImpl:
         try! rustCall { uniffi_feather_core_fn_free_nativemodule(pointer, $0) }
     }
 
-    
 
-    
+
+
 open func getInfo() -> ModuleInfo {
     return try!  FfiConverterTypeModuleInfo.lift(try! rustCall() {
     uniffi_feather_core_fn_method_nativemodule_get_info(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
+open func getWidgets() -> [String] {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_feather_core_fn_method_nativemodule_get_widgets(self.uniffiClonePointer(),$0
+    )
+})
+}
+
 open func callSync(action: String, payload: String)throws  -> String {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeModuleError.lift) {
     uniffi_feather_core_fn_method_nativemodule_call_sync(self.uniffiClonePointer(),
@@ -1280,7 +1236,7 @@ open func callSync(action: String, payload: String)throws  -> String {
     )
 })
 }
-    
+
 open func callAsync(action: String, payload: String, callback: NativeCallback) {try! rustCall() {
     uniffi_feather_core_fn_method_nativemodule_call_async(self.uniffiClonePointer(),
         FfiConverterString.lower(action),
@@ -1289,7 +1245,7 @@ open func callAsync(action: String, payload: String, callback: NativeCallback) {
     )
 }
 }
-    
+
 
 }
 
@@ -1314,8 +1270,30 @@ fileprivate struct UniffiCallbackInterfaceNativeModule {
                 )
             }
 
-            
+
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeModuleInfo.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        getWidgets: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> [String] in
+                guard let uniffiObj = try? FfiConverterTypeNativeModule.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.getWidgets(
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterSequenceString.lower($0) }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
                 makeCall: makeCall,
@@ -1340,7 +1318,7 @@ fileprivate struct UniffiCallbackInterfaceNativeModule {
                 )
             }
 
-            
+
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterString.lower($0) }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1369,7 +1347,7 @@ fileprivate struct UniffiCallbackInterfaceNativeModule {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1485,9 +1463,9 @@ public struct FfiConverterTypeBundleModule: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BundleModule {
         return
             try BundleModule(
-                name: FfiConverterString.read(from: &buf), 
-                version: FfiConverterString.read(from: &buf), 
-                platforms: FfiConverterSequenceString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf),
+                version: FfiConverterString.read(from: &buf),
+                platforms: FfiConverterSequenceString.read(from: &buf),
                 permissions: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -1546,7 +1524,7 @@ public struct FfiConverterTypeDiagnostic: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Diagnostic {
         return
             try Diagnostic(
-                level: FfiConverterString.read(from: &buf), 
+                level: FfiConverterString.read(from: &buf),
                 message: FfiConverterString.read(from: &buf)
         )
     }
@@ -1603,7 +1581,7 @@ public struct FfiConverterTypeModuleInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModuleInfo {
         return
             try ModuleInfo(
-                name: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf),
                 version: FfiConverterString.read(from: &buf)
         )
     }
@@ -1624,10 +1602,140 @@ public func FfiConverterTypeModuleInfo_lower(_ value: ModuleInfo) -> RustBuffer 
 }
 
 
+public struct NativeEvent {
+    public var name: String
+    public var payload: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, payload: String) {
+        self.name = name
+        self.payload = payload
+    }
+}
+
+
+
+extension NativeEvent: Equatable, Hashable {
+    public static func ==(lhs: NativeEvent, rhs: NativeEvent) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.payload != rhs.payload {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(payload)
+    }
+}
+
+
+public struct FfiConverterTypeNativeEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeEvent {
+        return
+            try NativeEvent(
+                name: FfiConverterString.read(from: &buf),
+                payload: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NativeEvent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.payload, into: &buf)
+    }
+}
+
+
+public func FfiConverterTypeNativeEvent_lift(_ buf: RustBuffer) throws -> NativeEvent {
+    return try FfiConverterTypeNativeEvent.lift(buf)
+}
+
+public func FfiConverterTypeNativeEvent_lower(_ value: NativeEvent) -> RustBuffer {
+    return FfiConverterTypeNativeEvent.lower(value)
+}
+
+
+public struct UiPatch {
+    public var path: [UInt32]
+    public var op: String
+    public var property: String?
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(path: [UInt32], op: String, property: String?, value: String) {
+        self.path = path
+        self.op = op
+        self.property = property
+        self.value = value
+    }
+}
+
+
+
+extension UiPatch: Equatable, Hashable {
+    public static func ==(lhs: UiPatch, rhs: UiPatch) -> Bool {
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.op != rhs.op {
+            return false
+        }
+        if lhs.property != rhs.property {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(path)
+        hasher.combine(op)
+        hasher.combine(property)
+        hasher.combine(value)
+    }
+}
+
+
+public struct FfiConverterTypeUiPatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UiPatch {
+        return
+            try UiPatch(
+                path: FfiConverterSequenceUInt32.read(from: &buf),
+                op: FfiConverterString.read(from: &buf),
+                property: FfiConverterOptionString.read(from: &buf),
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: UiPatch, into buf: inout [UInt8]) {
+        FfiConverterSequenceUInt32.write(value.path, into: &buf)
+        FfiConverterString.write(value.op, into: &buf)
+        FfiConverterOptionString.write(value.property, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+public func FfiConverterTypeUiPatch_lift(_ buf: RustBuffer) throws -> UiPatch {
+    return try FfiConverterTypeUiPatch.lift(buf)
+}
+
+public func FfiConverterTypeUiPatch_lower(_ value: UiPatch) -> RustBuffer {
+    return FfiConverterTypeUiPatch.lower(value)
+}
+
+
 public enum ModuleError {
 
-    
-    
+
+
     case ExecutionFailed(errMsg: String
     )
 }
@@ -1640,9 +1748,9 @@ public struct FfiConverterTypeModuleError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .ExecutionFailed(
             errMsg: try FfiConverterString.read(from: &buf)
             )
@@ -1654,14 +1762,14 @@ public struct FfiConverterTypeModuleError: FfiConverterRustBuffer {
     public static func write(_ value: ModuleError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case let .ExecutionFailed(errMsg):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(errMsg, into: &buf)
-            
+
         }
     }
 }
@@ -1689,6 +1797,28 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         case 1: return try FfiConverterString.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
+    }
+}
+
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
+        }
+        return seq
     }
 }
 
@@ -1779,9 +1909,70 @@ fileprivate struct FfiConverterSequenceTypeModuleInfo: FfiConverterRustBuffer {
         return seq
     }
 }
+
+fileprivate struct FfiConverterSequenceTypeNativeEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [NativeEvent]
+
+    public static func write(_ value: [NativeEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNativeEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NativeEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NativeEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNativeEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+fileprivate struct FfiConverterSequenceTypeUiPatch: FfiConverterRustBuffer {
+    typealias SwiftType = [UiPatch]
+
+    public static func write(_ value: [UiPatch], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeUiPatch.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UiPatch] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UiPatch]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeUiPatch.read(from: &buf))
+        }
+        return seq
+    }
+}
+public func diffLayouts(oldJson: String, newJson: String) -> [UiPatch] {
+    return try!  FfiConverterSequenceTypeUiPatch.lift(try! rustCall() {
+    uniffi_feather_core_fn_func_diff_layouts(
+        FfiConverterString.lower(oldJson),
+        FfiConverterString.lower(newJson),$0
+    )
+})
+}
 public func getGreeting() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_feather_core_fn_func_get_greeting($0
+    )
+})
+}
+public func verifyManifestSignature(manifestJson: String, signatureB64: String, publicKeyB64: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_feather_core_fn_func_verify_manifest_signature(
+        FfiConverterString.lower(manifestJson),
+        FfiConverterString.lower(signatureB64),
+        FfiConverterString.lower(publicKeyB64),$0
     )
 })
 }
@@ -1801,73 +1992,100 @@ private var initializationResult: InitializationResult {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_feather_core_checksum_func_diff_layouts() != 42186) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_feather_core_checksum_func_get_greeting() != 21733) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_apply_action_event() != 43878) {
+    if (uniffi_feather_core_checksum_func_verify_manifest_signature() != 24158) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_check_requirements() != 1886) {
+    if (uniffi_feather_core_checksum_method_appruntime_apply_action_event() != 40193) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_deliver_module_error() != 19207) {
+    if (uniffi_feather_core_checksum_method_appruntime_check_requirements() != 14057) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_deliver_module_result() != 15096) {
+    if (uniffi_feather_core_checksum_method_appruntime_deliver_module_error() != 18841) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_drain_console_logs() != 5568) {
+    if (uniffi_feather_core_checksum_method_appruntime_deliver_module_result() != 16115) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_drain_diagnostics() != 30556) {
+    if (uniffi_feather_core_checksum_method_appruntime_drain_console_logs() != 19444) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_drain_module_calls() != 57839) {
+    if (uniffi_feather_core_checksum_method_appruntime_drain_diagnostics() != 62596) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_get_all_state() != 34791) {
+    if (uniffi_feather_core_checksum_method_appruntime_drain_module_calls() != 27935) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_get_registered_modules() != 20228) {
+    if (uniffi_feather_core_checksum_method_appruntime_drain_native_events() != 22419) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_get_state() != 50549) {
+    if (uniffi_feather_core_checksum_method_appruntime_get_all_state() != 7081) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_has_wasm() != 1659) {
+    if (uniffi_feather_core_checksum_method_appruntime_get_registered_modules() != 52328) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_hot_reload_wasm() != 30783) {
+    if (uniffi_feather_core_checksum_method_appruntime_get_state() != 10218) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_load_wasm() != 56826) {
+    if (uniffi_feather_core_checksum_method_appruntime_has_javascript() != 10888) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_poll_render_needed() != 23165) {
+    if (uniffi_feather_core_checksum_method_appruntime_has_wasm() != 37988) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_register_module() != 32953) {
+    if (uniffi_feather_core_checksum_method_appruntime_hot_reload_wasm() != 50680) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_render_wasm() != 15948) {
+    if (uniffi_feather_core_checksum_method_appruntime_load_javascript() != 18466) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_report_diagnostic() != 1264) {
+    if (uniffi_feather_core_checksum_method_appruntime_load_signed_javascript() != 59115) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_resolve_state_text_nodes() != 53454) {
+    if (uniffi_feather_core_checksum_method_appruntime_load_wasm() != 29232) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_set_state() != 16513) {
+    if (uniffi_feather_core_checksum_method_appruntime_poll_render_needed() != 39752) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_state_bool() != 48881) {
+    if (uniffi_feather_core_checksum_method_appruntime_push_native_event() != 18375) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_state_list() != 40138) {
+    if (uniffi_feather_core_checksum_method_appruntime_register_module() != 44923) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_appruntime_state_value() != 30581) {
+    if (uniffi_feather_core_checksum_method_appruntime_render_javascript() != 55543) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_render_javascript_document() != 48091) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_render_wasm() != 46381) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_report_diagnostic() != 13252) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_resolve_state_text_nodes() != 42467) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_set_state() != 41382) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_state_bool() != 4754) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_state_list() != 36205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_appruntime_state_value() != 28920) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_feather_core_checksum_method_engine_get_state() != 32356) {
@@ -1885,10 +2103,13 @@ private var initializationResult: InitializationResult {
     if (uniffi_feather_core_checksum_method_nativemodule_get_info() != 34046) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_nativemodule_call_sync() != 55922) {
+    if (uniffi_feather_core_checksum_method_nativemodule_get_widgets() != 46543) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_feather_core_checksum_method_nativemodule_call_async() != 17737) {
+    if (uniffi_feather_core_checksum_method_nativemodule_call_sync() != 38383) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_feather_core_checksum_method_nativemodule_call_async() != 792) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_feather_core_checksum_constructor_appruntime_new() != 3915) {

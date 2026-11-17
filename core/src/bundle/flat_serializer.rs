@@ -124,7 +124,7 @@ impl WidgetType {
 pub fn build_style<'a>(
     builder: &mut flatbuffers::FlatBufferBuilder<'a>,
     style: &Value
-) -> Option<flatbuffers::WIPOffset<flatbuffers::Table<'a>>> {
+) -> Option<flatbuffers::WIPOffset<flatbuffers::TableFinishedWIPOffset>> {
     if !style.is_object() {
         return None;
     }
@@ -153,131 +153,131 @@ pub fn build_style<'a>(
     let direction_offset = style.get("direction").and_then(|v| v.as_str()).map(|s| builder.create_string(s));
     let position_offset = style.get("position").and_then(|v| v.as_str()).map(|s| builder.create_string(s));
 
-    builder.start_table();
+    let table_start = builder.start_table();
 
-    if let Some(o) = color_offset { builder.push_slot_always(0, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = color_offset { builder.push_slot_always(4, o); }
 
     let font_size = style.get("fontSize").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(1, font_size, 0);
+    builder.push_slot::<i32>(6, font_size, 0);
 
-    if let Some(o) = font_weight_offset { builder.push_slot_always(2, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = font_style_offset { builder.push_slot_always(3, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = text_align_offset { builder.push_slot_always(4, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = text_decoration_offset { builder.push_slot_always(5, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = font_family_offset { builder.push_slot_always(6, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = background_offset { builder.push_slot_always(7, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = font_weight_offset { builder.push_slot_always(8, o); }
+    if let Some(o) = font_style_offset { builder.push_slot_always(10, o); }
+    if let Some(o) = text_align_offset { builder.push_slot_always(12, o); }
+    if let Some(o) = text_decoration_offset { builder.push_slot_always(14, o); }
+    if let Some(o) = font_family_offset { builder.push_slot_always(16, o); }
+    if let Some(o) = background_offset { builder.push_slot_always(18, o); }
 
     let padding = style.get("padding").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(8, padding, 0);
+    builder.push_slot::<i32>(20, padding, 0);
 
     let padding_horizontal = style.get("paddingHorizontal").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(9, padding_horizontal, 0);
+    builder.push_slot::<i32>(22, padding_horizontal, 0);
 
     let padding_vertical = style.get("paddingVertical").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(10, padding_vertical, 0);
+    builder.push_slot::<i32>(24, padding_vertical, 0);
 
     let padding_top = style.get("paddingTop").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(11, padding_top, 0);
+    builder.push_slot::<i32>(26, padding_top, 0);
 
     let padding_bottom = style.get("paddingBottom").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(12, padding_bottom, 0);
+    builder.push_slot::<i32>(28, padding_bottom, 0);
 
     let padding_start = style.get("paddingStart").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(13, padding_start, 0);
+    builder.push_slot::<i32>(30, padding_start, 0);
 
     let padding_end = style.get("paddingEnd").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(14, padding_end, 0);
+    builder.push_slot::<i32>(32, padding_end, 0);
 
     let margin = style.get("margin").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(15, margin, 0);
+    builder.push_slot::<i32>(34, margin, 0);
 
     let corner_radius = style.get("cornerRadius").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(16, corner_radius, 0);
+    builder.push_slot::<i32>(36, corner_radius, 0);
 
-    if let Some(o) = border_color_offset { builder.push_slot_always(17, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = border_color_offset { builder.push_slot_always(38, o); }
 
     let border_width = style.get("borderWidth").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(18, border_width, 0);
+    builder.push_slot::<i32>(40, border_width, 0);
 
-    if let Some(o) = width_offset { builder.push_slot_always(19, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = height_offset { builder.push_slot_always(20, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = min_width_offset { builder.push_slot_always(21, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = min_height_offset { builder.push_slot_always(22, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = max_width_offset { builder.push_slot_always(23, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = max_height_offset { builder.push_slot_always(24, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = alignment_offset { builder.push_slot_always(25, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = width_offset { builder.push_slot_always(42, o); }
+    if let Some(o) = height_offset { builder.push_slot_always(44, o); }
+    if let Some(o) = min_width_offset { builder.push_slot_always(46, o); }
+    if let Some(o) = min_height_offset { builder.push_slot_always(48, o); }
+    if let Some(o) = max_width_offset { builder.push_slot_always(50, o); }
+    if let Some(o) = max_height_offset { builder.push_slot_always(52, o); }
+    if let Some(o) = alignment_offset { builder.push_slot_always(54, o); }
 
     let spacing = style.get("spacing").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(26, spacing, 0);
+    builder.push_slot::<i32>(56, spacing, 0);
 
     let opacity = style.get("opacity").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
-    builder.push_slot::<f32>(27, opacity, 1.0f32);
+    builder.push_slot::<f32>(58, opacity, 1.0f32);
 
-    if let Some(o) = text_color_offset { builder.push_slot_always(28, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = placeholder_color_offset { builder.push_slot_always(29, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = content_mode_offset { builder.push_slot_always(30, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = shadow_offset { builder.push_slot_always(31, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = text_color_offset { builder.push_slot_always(60, o); }
+    if let Some(o) = placeholder_color_offset { builder.push_slot_always(62, o); }
+    if let Some(o) = content_mode_offset { builder.push_slot_always(64, o); }
+    if let Some(o) = shadow_offset { builder.push_slot_always(66, o); }
 
     let elevation = style.get("elevation").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(32, elevation, 0);
+    builder.push_slot::<i32>(68, elevation, 0);
 
     let max_lines = style.get("maxLines").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(33, max_lines, 0);
+    builder.push_slot::<i32>(70, max_lines, 0);
 
     let flex = style.get("flex").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(34, flex, 0);
+    builder.push_slot::<i32>(72, flex, 0);
 
     let fill_max_width = style.get("fillMaxWidth").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(35, fill_max_width, false);
+    builder.push_slot::<bool>(74, fill_max_width, false);
 
     let fill_max_height = style.get("fillMaxHeight").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(36, fill_max_height, false);
+    builder.push_slot::<bool>(76, fill_max_height, false);
 
     let aspect_ratio = style.get("aspectRatio").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(37, aspect_ratio, 0.0f32);
+    builder.push_slot::<f32>(78, aspect_ratio, 0.0f32);
 
-    if let Some(o) = gradient_offset { builder.push_slot_always(38, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = gradient_offset { builder.push_slot_always(80, o); }
 
     let clip = style.get("clip").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(39, clip, false);
+    builder.push_slot::<bool>(82, clip, false);
 
-    if let Some(o) = keyboard_type_offset { builder.push_slot_always(40, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = keyboard_type_offset { builder.push_slot_always(84, o); }
 
     let max_length = style.get("maxLength").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(41, max_length, 0);
+    builder.push_slot::<i32>(86, max_length, 0);
 
     let multiline = style.get("multiline").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(42, multiline, false);
+    builder.push_slot::<bool>(88, multiline, false);
 
     let secure = style.get("secure").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(43, secure, false);
+    builder.push_slot::<bool>(90, secure, false);
 
-    if let Some(o) = direction_offset { builder.push_slot_always(44, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = position_offset { builder.push_slot_always(45, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = direction_offset { builder.push_slot_always(92, o); }
+    if let Some(o) = position_offset { builder.push_slot_always(94, o); }
 
     let top = style.get("top").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(46, top, 0.0f32);
+    builder.push_slot::<f32>(96, top, 0.0f32);
 
     let bottom = style.get("bottom").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(47, bottom, 0.0f32);
+    builder.push_slot::<f32>(98, bottom, 0.0f32);
 
     let left = style.get("left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(48, left, 0.0f32);
+    builder.push_slot::<f32>(100, left, 0.0f32);
 
     let right = style.get("right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(49, right, 0.0f32);
+    builder.push_slot::<f32>(102, right, 0.0f32);
 
     let z_index = style.get("zIndex").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(50, z_index, 0.0f32);
+    builder.push_slot::<f32>(104, z_index, 0.0f32);
 
-    let o = builder.end_table();
+    let o = builder.end_table(table_start);
     Some(o)
 }
 
 pub fn build_node<'a>(
     builder: &mut flatbuffers::FlatBufferBuilder<'a>,
     json: &Value
-) -> flatbuffers::WIPOffset<flatbuffers::Table<'a>> {
+) -> flatbuffers::WIPOffset<flatbuffers::TableFinishedWIPOffset> {
     let type_str = json.get("type").and_then(|v| v.as_str()).unwrap_or("Text");
     let widget_type = WidgetType::from_str(type_str);
 
@@ -395,13 +395,13 @@ pub fn build_node<'a>(
             let lbl_off = builder.create_string(lbl);
             let col_off = col.map(|c| builder.create_string(c));
 
-            builder.start_table();
-            builder.push_slot_always(0, val_off, flatbuffers::WIPOffset::new(0));
-            builder.push_slot_always(1, lbl_off, flatbuffers::WIPOffset::new(0));
+            let table_start = builder.start_table();
+            builder.push_slot_always(4, val_off);
+            builder.push_slot_always(6, lbl_off);
             if let Some(col_o) = col_off {
-                builder.push_slot_always(2, col_o, flatbuffers::WIPOffset::new(0));
+                builder.push_slot_always(8, col_o);
             }
-            let t = builder.end_table();
+            let t = builder.end_table(table_start);
             offsets.push(t);
         }
         Some(builder.create_vector(&offsets))
@@ -418,12 +418,12 @@ pub fn build_node<'a>(
             let title_off = builder.create_string(title);
             let icon_off = icon.map(|c| builder.create_string(c));
 
-            builder.start_table();
-            builder.push_slot_always(0, title_off, flatbuffers::WIPOffset::new(0));
+            let table_start = builder.start_table();
+            builder.push_slot_always(4, title_off);
             if let Some(icon_o) = icon_off {
-                builder.push_slot_always(1, icon_o, flatbuffers::WIPOffset::new(0));
+                builder.push_slot_always(6, icon_o);
             }
-            let t = builder.end_table();
+            let t = builder.end_table(table_start);
             offsets.push(t);
         }
         Some(builder.create_vector(&offsets))
@@ -444,12 +444,12 @@ pub fn build_node<'a>(
             let route_off = route.map(|c| builder.create_string(c));
             let act_off = act.map(|c| builder.create_string(c));
 
-            builder.start_table();
-            builder.push_slot_always(0, title_off, flatbuffers::WIPOffset::new(0));
-            if let Some(o) = icon_off { builder.push_slot_always(1, o, flatbuffers::WIPOffset::new(0)); }
-            if let Some(o) = route_off { builder.push_slot_always(2, o, flatbuffers::WIPOffset::new(0)); }
-            if let Some(o) = act_off { builder.push_slot_always(3, o, flatbuffers::WIPOffset::new(0)); }
-            let t = builder.end_table();
+            let table_start = builder.start_table();
+            builder.push_slot_always(4, title_off);
+            if let Some(o) = icon_off { builder.push_slot_always(6, o); }
+            if let Some(o) = route_off { builder.push_slot_always(8, o); }
+            if let Some(o) = act_off { builder.push_slot_always(10, o); }
+            let t = builder.end_table(table_start);
             offsets.push(t);
         }
         Some(builder.create_vector(&offsets))
@@ -463,10 +463,10 @@ pub fn build_node<'a>(
             let route_off = builder.create_string(route);
             let child_off = build_node(builder, child);
 
-            builder.start_table();
-            builder.push_slot_always(0, route_off, flatbuffers::WIPOffset::new(0));
-            builder.push_slot_always(1, child_off, flatbuffers::WIPOffset::new(0));
-            let t = builder.end_table();
+            let table_start = builder.start_table();
+            builder.push_slot_always(4, route_off);
+            builder.push_slot_always(6, child_off);
+            let t = builder.end_table(table_start);
             offsets.push(t);
         }
         Some(builder.create_vector(&offsets))
@@ -474,148 +474,148 @@ pub fn build_node<'a>(
         None
     };
 
-    builder.start_table();
+    let table_start = builder.start_table();
     
-    builder.push_slot::<i8>(0, widget_type as i8, 0);
+    builder.push_slot::<i8>(4, widget_type as i8, 0);
 
-    if let Some(o) = id_offset { builder.push_slot_always(1, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = text_offset { builder.push_slot_always(2, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = action_offset { builder.push_slot_always(3, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = id_offset { builder.push_slot_always(6, o); }
+    if let Some(o) = text_offset { builder.push_slot_always(8, o); }
+    if let Some(o) = action_offset { builder.push_slot_always(10, o); }
     
     let enabled = json.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
-    builder.push_slot::<bool>(4, enabled, true);
+    builder.push_slot::<bool>(12, enabled, true);
 
-    if let Some(o) = value_offset { builder.push_slot_always(5, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = placeholder_offset { builder.push_slot_always(6, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = label_offset { builder.push_slot_always(7, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = src_offset { builder.push_slot_always(8, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = alt_offset { builder.push_slot_always(9, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = name_offset { builder.push_slot_always(10, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = value_offset { builder.push_slot_always(14, o); }
+    if let Some(o) = placeholder_offset { builder.push_slot_always(16, o); }
+    if let Some(o) = label_offset { builder.push_slot_always(18, o); }
+    if let Some(o) = src_offset { builder.push_slot_always(20, o); }
+    if let Some(o) = alt_offset { builder.push_slot_always(22, o); }
+    if let Some(o) = name_offset { builder.push_slot_always(24, o); }
 
     let size = json.get("size").and_then(|v| v.as_i64()).unwrap_or(24) as i32;
-    builder.push_slot::<i32>(11, size, 24);
+    builder.push_slot::<i32>(26, size, 24);
 
-    if let Some(o) = color_offset { builder.push_slot_always(12, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = background_offset { builder.push_slot_always(13, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = color_offset { builder.push_slot_always(28, o); }
+    if let Some(o) = background_offset { builder.push_slot_always(30, o); }
 
     let flex = json.get("flex").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-    builder.push_slot::<i32>(14, flex, 1);
+    builder.push_slot::<i32>(32, flex, 1);
 
     let thickness = json.get("thickness").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-    builder.push_slot::<i32>(15, thickness, 1);
+    builder.push_slot::<i32>(34, thickness, 1);
 
     let indent = json.get("indent").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(16, indent, 0);
+    builder.push_slot::<i32>(36, indent, 0);
 
-    if let Some(o) = direction_offset { builder.push_slot_always(17, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = direction_offset { builder.push_slot_always(38, o); }
 
     let ratio = json.get("ratio").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
-    builder.push_slot::<f32>(18, ratio, 1.0f32);
+    builder.push_slot::<f32>(40, ratio, 1.0f32);
 
     let checked = json.get("checked").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(19, checked, false);
+    builder.push_slot::<bool>(42, checked, false);
 
-    if let Some(o) = track_color_offset { builder.push_slot_always(20, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = thumb_color_offset { builder.push_slot_always(21, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = selected_offset { builder.push_slot_always(22, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = track_color_offset { builder.push_slot_always(44, o); }
+    if let Some(o) = thumb_color_offset { builder.push_slot_always(46, o); }
+    if let Some(o) = selected_offset { builder.push_slot_always(48, o); }
 
     let min = json.get("min").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(23, min, 0.0f32);
+    builder.push_slot::<f32>(50, min, 0.0f32);
 
     let max = json.get("max").and_then(|v| v.as_f64()).unwrap_or(100.0) as f32;
-    builder.push_slot::<f32>(24, max, 100.0f32);
+    builder.push_slot::<f32>(52, max, 100.0f32);
 
     let step = json.get("step").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(25, step, 0.0f32);
+    builder.push_slot::<f32>(54, step, 0.0f32);
 
     let progress = json.get("progress").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    builder.push_slot::<f32>(26, progress, 0.0f32);
+    builder.push_slot::<f32>(56, progress, 0.0f32);
 
     let stroke_width = json.get("strokeWidth").and_then(|v| v.as_i64()).unwrap_or(4) as i32;
-    builder.push_slot::<i32>(27, stroke_width, 4);
+    builder.push_slot::<i32>(58, stroke_width, 4);
 
     let visible = json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
-    builder.push_slot::<bool>(28, visible, true);
+    builder.push_slot::<bool>(60, visible, true);
 
-    if let Some(o) = title_offset { builder.push_slot_always(29, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = confirm_text_offset { builder.push_slot_always(30, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = dismiss_text_offset { builder.push_slot_always(31, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = confirm_action_offset { builder.push_slot_always(32, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = dismiss_action_offset { builder.push_slot_always(33, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = message_offset { builder.push_slot_always(34, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = action_text_offset { builder.push_slot_always(35, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = title_offset { builder.push_slot_always(62, o); }
+    if let Some(o) = confirm_text_offset { builder.push_slot_always(64, o); }
+    if let Some(o) = dismiss_text_offset { builder.push_slot_always(66, o); }
+    if let Some(o) = confirm_action_offset { builder.push_slot_always(68, o); }
+    if let Some(o) = dismiss_action_offset { builder.push_slot_always(70, o); }
+    if let Some(o) = message_offset { builder.push_slot_always(72, o); }
+    if let Some(o) = action_text_offset { builder.push_slot_always(74, o); }
 
     let count = json.get("count").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(36, count, 0);
+    builder.push_slot::<i32>(76, count, 0);
 
-    if let Some(o) = icon_color_offset { builder.push_slot_always(37, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = icon_color_offset { builder.push_slot_always(78, o); }
 
     let corner_radius = json.get("cornerRadius").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(38, corner_radius, 0);
+    builder.push_slot::<i32>(80, corner_radius, 0);
 
-    if let Some(o) = subtitle_offset { builder.push_slot_always(39, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = navigation_icon_offset { builder.push_slot_always(40, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = navigation_action_offset { builder.push_slot_always(41, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = subtitle_offset { builder.push_slot_always(82, o); }
+    if let Some(o) = navigation_icon_offset { builder.push_slot_always(84, o); }
+    if let Some(o) = navigation_action_offset { builder.push_slot_always(86, o); }
 
     let current_page = json.get("currentPage").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(42, current_page, 0);
+    builder.push_slot::<i32>(88, current_page, 0);
 
-    if let Some(o) = initial_route_offset { builder.push_slot_always(43, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = initial_route_offset { builder.push_slot_always(90, o); }
 
     let autoplay = json.get("autoplay").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(44, autoplay, false);
+    builder.push_slot::<bool>(92, autoplay, false);
 
     let controls = json.get("controls").and_then(|v| v.as_bool()).unwrap_or(true);
-    builder.push_slot::<bool>(45, controls, true);
+    builder.push_slot::<bool>(94, controls, true);
 
     let loop_val = json.get("loop").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(46, loop_val, false);
+    builder.push_slot::<bool>(96, loop_val, false);
 
-    if let Some(o) = poster_offset { builder.push_slot_always(47, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = url_offset { builder.push_slot_always(48, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = on_tap_offset { builder.push_slot_always(49, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = on_pan_offset { builder.push_slot_always(50, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = poster_offset { builder.push_slot_always(98, o); }
+    if let Some(o) = url_offset { builder.push_slot_always(100, o); }
+    if let Some(o) = on_tap_offset { builder.push_slot_always(102, o); }
+    if let Some(o) = on_pan_offset { builder.push_slot_always(104, o); }
 
     let ripple = json.get("ripple").and_then(|v| v.as_bool()).unwrap_or(true);
-    builder.push_slot::<bool>(51, ripple, true);
+    builder.push_slot::<bool>(106, ripple, true);
 
     let duration = json.get("duration").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    builder.push_slot::<i32>(52, duration, 0);
+    builder.push_slot::<i32>(108, duration, 0);
 
     let refreshing = json.get("refreshing").and_then(|v| v.as_bool()).unwrap_or(false);
-    builder.push_slot::<bool>(53, refreshing, false);
+    builder.push_slot::<bool>(110, refreshing, false);
 
-    if let Some(o) = module_offset { builder.push_slot_always(54, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = props_offset { builder.push_slot_always(55, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = style_offset { builder.push_slot_always(56, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = children_offsets { builder.push_slot_always(57, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = options_offsets { builder.push_slot_always(58, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = radio_options_offset { builder.push_slot_always(59, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = tab_items_offset { builder.push_slot_always(60, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = drawer_items_offset { builder.push_slot_always(61, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = screens_offset { builder.push_slot_always(62, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = module_offset { builder.push_slot_always(112, o); }
+    if let Some(o) = props_offset { builder.push_slot_always(114, o); }
+    if let Some(o) = style_offset { builder.push_slot_always(116, o); }
+    if let Some(o) = children_offsets { builder.push_slot_always(118, o); }
+    if let Some(o) = options_offsets { builder.push_slot_always(120, o); }
+    if let Some(o) = radio_options_offset { builder.push_slot_always(122, o); }
+    if let Some(o) = tab_items_offset { builder.push_slot_always(124, o); }
+    if let Some(o) = drawer_items_offset { builder.push_slot_always(126, o); }
+    if let Some(o) = screens_offset { builder.push_slot_always(128, o); }
     
-    if let Some(o) = key_offset { builder.push_slot_always(63, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = prefix_offset { builder.push_slot_always(64, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = fallback_offset { builder.push_slot_always(65, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = key_offset { builder.push_slot_always(130, o); }
+    if let Some(o) = prefix_offset { builder.push_slot_always(132, o); }
+    if let Some(o) = fallback_offset { builder.push_slot_always(134, o); }
 
-    if let Some(o) = child_offset { builder.push_slot_always(66, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = content_offset { builder.push_slot_always(67, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = top_bar_offset { builder.push_slot_always(68, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = bottom_bar_offset { builder.push_slot_always(69, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = fab_offset { builder.push_slot_always(70, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = drawer_offset { builder.push_slot_always(71, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = body_offset { builder.push_slot_always(72, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = header_offset { builder.push_slot_always(73, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = pages_offsets { builder.push_slot_always(74, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = tabs_offsets { builder.push_slot_always(75, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = template_offset { builder.push_slot_always(76, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = then_offset { builder.push_slot_always(77, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = otherwise_offset { builder.push_slot_always(78, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = start_content_offset { builder.push_slot_always(79, o, flatbuffers::WIPOffset::new(0)); }
-    if let Some(o) = end_content_offset { builder.push_slot_always(80, o, flatbuffers::WIPOffset::new(0)); }
+    if let Some(o) = child_offset { builder.push_slot_always(136, o); }
+    if let Some(o) = content_offset { builder.push_slot_always(138, o); }
+    if let Some(o) = top_bar_offset { builder.push_slot_always(140, o); }
+    if let Some(o) = bottom_bar_offset { builder.push_slot_always(142, o); }
+    if let Some(o) = fab_offset { builder.push_slot_always(144, o); }
+    if let Some(o) = drawer_offset { builder.push_slot_always(146, o); }
+    if let Some(o) = body_offset { builder.push_slot_always(148, o); }
+    if let Some(o) = header_offset { builder.push_slot_always(150, o); }
+    if let Some(o) = pages_offsets { builder.push_slot_always(152, o); }
+    if let Some(o) = tabs_offsets { builder.push_slot_always(154, o); }
+    if let Some(o) = template_offset { builder.push_slot_always(156, o); }
+    if let Some(o) = then_offset { builder.push_slot_always(158, o); }
+    if let Some(o) = otherwise_offset { builder.push_slot_always(160, o); }
+    if let Some(o) = start_content_offset { builder.push_slot_always(162, o); }
+    if let Some(o) = end_content_offset { builder.push_slot_always(164, o); }
 
-    builder.end_table()
+    builder.end_table(table_start)
 }
 
 pub fn json_to_flatbuffer(json_str: &str) -> Result<Vec<u8>, String> {
@@ -629,7 +629,56 @@ pub fn json_to_flatbuffer(json_str: &str) -> Result<Vec<u8>, String> {
     };
 
     let mut builder = flatbuffers::FlatBufferBuilder::new();
+    // Emit scalar defaults explicitly: the JSON defaults differ from layout.fbs.
+    builder.force_defaults(true);
     let root_offset = build_node(&mut builder, root_val);
     builder.finish(root_offset, None);
     Ok(builder.finished_data().to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flatbuffers::{ForwardsUOffset, Table, Vector};
+
+    // Read fields using the schema's vtable offsets, independently of the writer.
+    // These helpers only inspect buffers produced by this serializer, not untrusted input.
+    fn root(bytes: &[u8]) -> Table<'_> {
+        let offset = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+        unsafe { Table::new(bytes, offset) }
+    }
+
+    fn text<'a>(table: Table<'a>, slot: u16) -> Option<&'a str> {
+        unsafe { table.get::<ForwardsUOffset<&str>>(slot, None) }
+    }
+
+    #[test]
+    fn schema_offsets_preserve_nested_nodes_and_styles() {
+        let bytes = json_to_flatbuffer(r##"{"type":"render","root":{"type":"Column","id":"root","children":[{"type":"Text","text":"Hello","style":{"color":"#123456","fontSize":18}}]}}"##).unwrap();
+        let table = root(&bytes);
+        assert_eq!(unsafe { table.get::<i8>(4, Some(0)) }, Some(9));
+        assert_eq!(text(table, 6), Some("root"));
+        let children = unsafe { table.get::<ForwardsUOffset<Vector<ForwardsUOffset<Table>>>>(118, None) }.unwrap();
+        assert_eq!(children.len(), 1);
+        let child = children.get(0);
+        assert_eq!(text(child, 8), Some("Hello"));
+        let style = unsafe { child.get::<ForwardsUOffset<Table>>(116, None) }.unwrap();
+        assert_eq!(text(style, 4), Some("#123456"));
+        assert_eq!(unsafe { style.get::<i32>(6, Some(0)) }, Some(18));
+    }
+
+    #[test]
+    fn json_defaults_are_explicit_even_when_schema_defaults_differ() {
+        let bytes = json_to_flatbuffer(r#"{"type":"Icon"}"#).unwrap();
+        let table = root(&bytes);
+        assert_eq!(unsafe { table.get::<i32>(26, Some(0)) }, Some(24));
+        assert_eq!(unsafe { table.get::<bool>(60, Some(false)) }, Some(true));
+        assert_eq!(unsafe { table.get::<bool>(94, Some(false)) }, Some(true));
+    }
+
+    #[test]
+    fn rejects_invalid_json_and_render_without_root() {
+        assert!(json_to_flatbuffer("{").is_err());
+        assert!(json_to_flatbuffer(r#"{"type":"render"}"#).is_err());
+    }
 }

@@ -18,6 +18,7 @@ Thumbs.db
 # Feather temp/build
 **/dist/
 **/.feather/
+**/.featherbundle/
 java_pid*.hprof
 
 # Logs
@@ -32,8 +33,7 @@ local.properties
 Pods/
 .recommenders/
 
-# Cargo locks
-Cargo.lock
+# Cargo lockfiles are tracked for reproducible CLI/runtime builds.
 
 # IDX
 .idx/

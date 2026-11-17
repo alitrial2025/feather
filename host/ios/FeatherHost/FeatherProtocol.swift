@@ -160,6 +160,8 @@ struct BundleManifest: Decodable {
     let protocolVersion: Int
     let render: BundleArtifact
     let wasm: BundleArtifact?
+    let runtime: String?
+    let javascript: BundleArtifact?
     let assets: [BundleArtifact]?
     let modules: [BundleModuleEntry]?
     let delta: BundleDelta?
@@ -170,6 +172,8 @@ struct BundleManifest: Decodable {
         case protocolVersion = "protocol_version"
         case render
         case wasm
+        case runtime
+        case javascript
         case assets
         case modules
         case delta

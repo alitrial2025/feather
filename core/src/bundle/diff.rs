@@ -187,8 +187,8 @@ mod tests {
 
     #[test]
     fn test_diff_layouts_property_update() {
-        let old = r#"{"type":"Text","text":"Hello World","style":{"color":"#000000"}}"#;
-        let new = r#"{"type":"Text","text":"Hello Feather","style":{"color":"#ffffff","background":"#000000"}}"#;
+        let old = r##"{"type":"Text","text":"Hello World","style":{"color":"#000000"}}"##;
+        let new = r##"{"type":"Text","text":"Hello Feather","style":{"color":"#ffffff","background":"#000000"}}"##;
         let patches = diff_layouts(old, new);
 
         assert_eq!(patches.len(), 3);
@@ -208,8 +208,8 @@ mod tests {
 
     #[test]
     fn test_diff_layouts_child_insert_and_remove() {
-        let old = r#"{"type":"Column","children":[{"type":"Text","text":"One"},{"type":"Text","text":"Two"}]}"#;
-        let new = r#"{"type":"Column","children":[{"type":"Text","text":"One"},{"type":"Text","text":"Three"},{"type":"Text","text":"Four"}]}"#;
+        let old = r##"{"type":"Column","children":[{"type":"Text","text":"One"},{"type":"Text","text":"Two"}]}"##;
+        let new = r##"{"type":"Column","children":[{"type":"Text","text":"One"},{"type":"Text","text":"Three"},{"type":"Text","text":"Four"}]}"##;
         let patches = diff_layouts(old, new);
 
         // Children:
@@ -225,7 +225,7 @@ mod tests {
         assert_eq!(patches[0].value, "\"Three\"");
 
         // Insert on root path
-        assert_eq!(patches[1].path, vec![]);
+        assert!(patches[1].path.is_empty());
         assert_eq!(patches[1].op, "InsertChild");
         assert_eq!(patches[1].property.as_deref(), Some("2"));
         assert!(patches[1].value.contains("Four"));

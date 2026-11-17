@@ -1,3 +1,10 @@
+> Status update (2026-11-17): the real Kotlin 2.1.10 WASI probe fails in the
+> current interpreter with unsupported GC heap types and `CallRef`. The rewriter
+> is experimental and now rejects unsupported instructions. The working
+> compiler/runtime proof uses an opt-in Kotlin/JS backend with QuickJS. See
+> [Kotlin/JS runtime](kotlin-js-runtime.md) and [platform plan](platform-plan.md).
+> The original design below is an aspiration, not validated Kotlin/WASM parity.
+
 # Feather Long-Term Architecture Path
 
 After evaluating the limits of KSP and the fragile nature of string-scanning parsers for extracting UI trees, we have made a definitive decision on the long-term architectural path for Feather.
@@ -23,4 +30,4 @@ The string-scanning parsers (CLI and KSP) will be kept **strictly as a developme
 
 ## Conclusion
 
-By relying on standard Kotlin/WASM compilation, Feather supports 100% of the Kotlin language out of the box—loops, conditionals, custom components, and complex state management—without needing to maintain a buggy parallel Kotlin parser.
+Using the official compiler avoids maintaining a parallel Kotlin parser, but language, standard-library and runtime compatibility must be verified against actual compiler output. General Kotlin/WASM execution has not been established.

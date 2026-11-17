@@ -1,6 +1,6 @@
 import Foundation
 import UIKit
-import compression
+import Compression
 
 @MainActor
 final class FeatherDevClient: NSObject, ObservableObject {
@@ -20,6 +20,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
     private var reconnectTimer: Timer?
     private let maxReconnectAttempts = 5
     private var reconnectAttempts = 0
+    private var bundleFetchGeneration: UInt64 = 0
     private var currentJsonMessage: [String: Any]? = nil
 
     override init() {
@@ -56,7 +57,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
         if let wasmUrl = Bundle.main.url(forResource: "app", withExtension: "wasm", subdirectory: "feather"),
            let wasmData = try? Data(contentsOf: wasmUrl) {
             do {
-                try runtime.loadWasm(wasmBytes: [UInt8](wasmData))
+                try runtime.loadWasm(wasmBytes: wasmData)
                 isConnected = true
 
                 // Initial render
@@ -127,10 +128,32 @@ final class FeatherDevClient: NSObject, ObservableObject {
     }
 
     private func loadStandaloneBundle() -> Bool {
+        if let url = Bundle.main.url(forResource: "app", withExtension: "js", subdirectory: "feather") {
+            do {
+                guard let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "feather") else {
+                    throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey: "Missing signed manifest"])
+                }
+                let key = Bundle.main.object(forInfoDictionaryKey: "FeatherBundlePublicKey") as? String ?? ""
+                try runtime.loadSignedJavascript(manifestJson: String(contentsOf: manifestURL, encoding: .utf8),
+                    source: String(contentsOf: url, encoding: .utf8), publicKey: key.trimmingCharacters(in: .whitespacesAndNewlines))
+                let document = try runtime.renderJavascriptDocument()
+                let data = Data(document.utf8)
+                let (node, diagnostics) = try FeatherRenderPayload.decode(data)
+                currentJsonMessage = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                root = node
+                errors = diagnostics
+                isConnected = true
+            } catch {
+                root = .text(id: UUID().uuidString, text: "Bundle verification or startup failed")
+                errors = [error.localizedDescription]
+            }
+            return true // Rejected signed code must not fall back to unsigned layouts.
+        }
+
         // 1. Try WASM logic
         if let wasmUrl = Bundle.main.url(forResource: "app", withExtension: "wasm", subdirectory: "feather"),
            let wasmData = try? Data(contentsOf: wasmUrl) {
-            try? runtime.loadWasm(wasmBytes: [UInt8](wasmData))
+            try? runtime.loadWasm(wasmBytes: wasmData)
         }
 
         // 2. Try Binary IR (MessagePack)
@@ -194,7 +217,15 @@ final class FeatherDevClient: NSObject, ObservableObject {
                     // Drain module calls first
                     self.drainModuleCalls()
 
-                    if self.runtime.hasWasm() {
+                    if self.runtime.hasJavascript() {
+                        do {
+                            let data = Data(try self.runtime.renderJavascriptDocument().utf8)
+                            let (node, diagnostics) = try FeatherRenderPayload.decode(data)
+                            self.currentJsonMessage = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                            self.root = node
+                            self.errors = diagnostics
+                        } catch { self.errors = [error.localizedDescription] }
+                    } else if self.runtime.hasWasm() {
                         if let renderTree = self.runtime.renderWasm() {
                             if renderTree.hasPrefix("base64:") {
                                 let base64Str = String(renderTree.dropFirst(7))
@@ -269,6 +300,8 @@ final class FeatherDevClient: NSObject, ObservableObject {
     // MARK: - Bundle Fetch (HTTP)
 
     func fetchBundleRender() async {
+        bundleFetchGeneration += 1
+        let generation = bundleFetchGeneration
         do {
             let manifestURL = baseURL.appending(path: "bundle/manifest")
             let (manifestData, _) = try await URLSession.shared.data(from: manifestURL)
@@ -277,7 +310,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
             // ─── Feature 1: Cryptographic Bundle Verification & Code Signing ───
             let signature = manifest.signature ?? ""
             let manifestJSON = String(data: manifestData, encoding: .utf8) ?? "{}"
-            let hostPublicKeyB64 = "MCowBQYDK2VwAyEAi43tq2sB7k4n1xT3M8vR2fG0wW6eW+0v4eN9gDqK4sQ=" // Replace with your public key from .feather/public_key.txt
+            let hostPublicKeyB64 = (Bundle.main.object(forInfoDictionaryKey: "FeatherBundlePublicKey") as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             
             if signature.isEmpty || !verifyManifestSignature(manifestJson: manifestJSON, signatureB64: signature, publicKeyB64: hostPublicKeyB64) {
                 throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey: "CRYPTOGRAPHIC SECURE BOOT FAULT"])
@@ -306,13 +339,33 @@ final class FeatherDevClient: NSObject, ObservableObject {
             } ?? []
             let missingModules = runtime.checkRequirements(requiredModules: requiredModules, hostPlatform: "ios")
 
+            if manifest.runtime == "kotlin-js" {
+                guard manifest.javascript?.path == "app.js" else {
+                    throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey:"Invalid JavaScript artifact"])
+                }
+                let (sourceData, response) = try await URLSession.shared.data(from: baseURL.appending(path: "bundle/artifact/app.js"))
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let source = String(data: sourceData, encoding: .utf8) else {
+                    throw NSError(domain: "Feather", code: 502, userInfo: [NSLocalizedDescriptionKey:"JavaScript download failed"])
+                }
+                guard generation == bundleFetchGeneration else { return }
+                try runtime.loadSignedJavascript(manifestJson: manifestJSON, source: source, publicKey: hostPublicKeyB64)
+                let data = Data(try runtime.renderJavascriptDocument().utf8)
+                let (node, diagnostics) = try FeatherRenderPayload.decode(data)
+                currentJsonMessage = try JSONSerialization.jsonObject(with: data) as? [String:Any]
+                root = node
+                errors = diagnostics + missingModules
+                isConnected = true
+                return
+            }
+
             // Fetch WASM if present (prefer compressed)
             if let wasmArtifact = manifest.wasm {
                 let wasmURL = baseURL
                     .appending(path: "bundle/artifact")
                     .appending(path: wasmArtifact.path)
                 if let wasmData = try? await tryFetchCompressed(url: wasmURL) {
-                    try? runtime.loadWasm(wasmBytes: [UInt8](wasmData))
+                    try? runtime.loadWasm(wasmBytes: wasmData)
                 }
             }
 
@@ -437,6 +490,16 @@ final class FeatherDevClient: NSObject, ObservableObject {
             return
         }
 
+        if runtime.hasJavascript() {
+            if let data = runtime.getAllState().data(using: .utf8),
+               let state = try? JSONSerialization.jsonObject(with: data),
+               let event = try? JSONSerialization.data(withJSONObject: ["type":"runtime_state", "state":state]),
+               let text = String(data: event, encoding: .utf8) {
+                socket?.send(.string(text)) { _ in }
+            }
+            return
+        }
+
         // Also forward to dev server for CLI sync
         var socketEvent = eventObj
         socketEvent["type"] = "action"
@@ -469,8 +532,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
         moduleRegistry.register(MapsModule())
         moduleRegistry.register(PaymentsModule())
         moduleRegistry.register(ReflectionModule())
-        moduleRegistry.register(CameraModuleIOS())
-        moduleRegistry.register(MapsModuleIOS())
+        // External sample camera/maps plugins are opt-in host dependencies.
 
         // Load dynamic third-party plugins
         let dynamicPlugins = FeatherPluginLoader.loadPlugins()
@@ -495,9 +557,13 @@ final class FeatherDevClient: NSObject, ObservableObject {
     }
 
     private func sendStateAssignment(_ key: String, _ value: String) {
-        let escaped = value.replacingOccurrences(of: "\\", with: "\\\\")
-                           .replacingOccurrences(of: "\"", with: "\\\"")
-        sendAction(action: "\(key)=\"\(escaped)\"", payload: nil)
+        guard !key.isEmpty else { return }
+        runtime.setState(key: key, jsonValue: value)
+        let typed = value.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed) } ?? value
+        if let data = try? JSONSerialization.data(withJSONObject: ["type":"state_update", "key":key, "value":typed]),
+           let text = String(data: data, encoding: .utf8) {
+            socket?.send(.string(text)) { _ in }
+        }
     }
 
     // MARK: - Private
@@ -514,12 +580,24 @@ final class FeatherDevClient: NSObject, ObservableObject {
                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         
                         let type = json["type"] as? String
-                        if type == "module_call" {
+                        if type == "hot-reload-js" {
+                            Task { await self.fetchBundleRender() }
+                        } else if type == "devtools_state_update" {
+                            if let key = json["key"] as? String, let value = json["value"],
+                               let data = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed),
+                               let jsonValue = String(data: data, encoding: .utf8) {
+                                self.runtime.setState(key: key, jsonValue: jsonValue)
+                            }
+                        } else if self.runtime.hasJavascript() && ["render", "patch", "state_update", "module_call"].contains(type ?? "") {
+                            // Device runtime owns its state; server output is a preview.
+                        } else if self.runtime.hasJavascript() && type == "render_error" {
+                            self.errors = (json["diagnostics"] as? [[String:Any]] ?? []).compactMap { $0["message"] as? String }
+                        } else if type == "module_call" {
                             self.runtime.applyActionEvent(payload: payload)
                         } else if type == "state_update" {
                             if let key = json["key"] as? String,
                                let value = json["value"] {
-                                self.runtime.setState(key: key, value: "\(value)")
+                                self.runtime.setState(key: key, jsonValue: "\(value)")
                             }
                         } else if type == "hot-reload-wasm" {
                             if let path = json["path"] as? String {
@@ -575,7 +653,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
                     .appending(path: "bundle/artifact")
                     .appending(path: path)
                 let data = try await tryFetchCompressed(url: wasmURL)
-                try runtime.hotReloadWasm(wasmBytes: [UInt8](data))
+                try runtime.hotReloadWasm(wasmBytes: data)
             } catch {
                 print("Hot reload failed: \(error.localizedDescription)")
             }

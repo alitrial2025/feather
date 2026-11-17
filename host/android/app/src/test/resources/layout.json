@@ -1,0 +1,10 @@
+{
+  "type": "Column",
+  "children": [
+    {"type":"Text", "text":"Shared protocol", "style":{"color":"#123456", "fontSize":18, "opacity":0}},
+    {"type":"Placeholder", "style":{"width":"120", "height":"80"}, "cornerRadius":8},
+    {"type":"PullToRefresh", "action":"refresh", "refreshing":true, "content":{"type":"Text", "text":"Refresh content"}},
+    {"type":"Custom", "module":"test-module", "name":"CustomView", "props":{"title":"Typed props"}},
+    {"type":"StateText", "key":"count", "prefix":"Count: ", "fallback":"0"}
+  ]
+}

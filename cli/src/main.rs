@@ -1,4 +1,5 @@
 mod bundler;
+mod compiler;
 mod cli;
 mod commands;
 mod config;
@@ -27,6 +28,11 @@ async fn main() {
                     std::process::exit(1);
                 }
             };
+            if config.manifest.runtime.as_deref() == Some("kotlin-js") {
+                if let Err(error) = compiler::compile_javascript(&config.project_path) {
+                    eprintln!("{error}"); std::process::exit(1);
+                }
+            }
             run_server(config).await;
             Ok(())
         }
@@ -37,6 +43,7 @@ async fn main() {
         Commands::Update { project } => commands::upgrade_modules(project).await,
         Commands::Init { name } => commands::init_project(name).await,
         Commands::Build { project, target } => commands::build_production(project, target).await,
+        Commands::CompileJs { project } => compiler::compile_javascript(&project).map_err(Into::into),
         Commands::CompileWasm { project } => commands::compile_wasm(project).await,
     };
 

@@ -253,35 +253,42 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_CALLBACK_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_CALLBACK_METHOD0
-typedef void (*UniffiCallbackInterfaceNativeCallbackMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceNativeCallbackMethod0)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_CALLBACK_METHOD1
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_CALLBACK_METHOD1
-typedef void (*UniffiCallbackInterfaceNativeCallbackMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceNativeCallbackMethod1)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD0
-typedef void (*UniffiCallbackInterfaceNativeModuleMethod0)(uint64_t, RustBuffer* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceNativeModuleMethod0)(uint64_t, RustBuffer* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD1
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD1
-typedef void (*UniffiCallbackInterfaceNativeModuleMethod1)(uint64_t, RustBuffer, RustBuffer, RustBuffer* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceNativeModuleMethod1)(uint64_t, RustBuffer* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD2
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD2
-typedef void (*UniffiCallbackInterfaceNativeModuleMethod2)(uint64_t, RustBuffer, RustBuffer, void*_Nonnull, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceNativeModuleMethod2)(uint64_t, RustBuffer, RustBuffer, RustBuffer* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_NATIVE_MODULE_METHOD3
+typedef void (*UniffiCallbackInterfaceNativeModuleMethod3)(uint64_t, RustBuffer, RustBuffer, void*_Nonnull, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -299,8 +306,9 @@ typedef struct UniffiVTableCallbackInterfaceNativeCallback {
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_NATIVE_MODULE
 typedef struct UniffiVTableCallbackInterfaceNativeModule {
     UniffiCallbackInterfaceNativeModuleMethod0 _Nonnull getInfo;
-    UniffiCallbackInterfaceNativeModuleMethod1 _Nonnull callSync;
-    UniffiCallbackInterfaceNativeModuleMethod2 _Nonnull callAsync;
+    UniffiCallbackInterfaceNativeModuleMethod1 _Nonnull getWidgets;
+    UniffiCallbackInterfaceNativeModuleMethod2 _Nonnull callSync;
+    UniffiCallbackInterfaceNativeModuleMethod3 _Nonnull callAsync;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceNativeModule;
 
@@ -318,7 +326,7 @@ void uniffi_feather_core_fn_free_appruntime(void*_Nonnull ptr, RustCallStatus *_
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_CONSTRUCTOR_APPRUNTIME_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_CONSTRUCTOR_APPRUNTIME_NEW
 void*_Nonnull uniffi_feather_core_fn_constructor_appruntime_new(RustCallStatus *_Nonnull out_status
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_APPLY_ACTION_EVENT
@@ -356,6 +364,11 @@ RustBuffer uniffi_feather_core_fn_method_appruntime_drain_diagnostics(void*_Nonn
 RustBuffer uniffi_feather_core_fn_method_appruntime_drain_module_calls(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_DRAIN_NATIVE_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_DRAIN_NATIVE_EVENTS
+RustBuffer uniffi_feather_core_fn_method_appruntime_drain_native_events(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_GET_ALL_STATE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_GET_ALL_STATE
 RustBuffer uniffi_feather_core_fn_method_appruntime_get_all_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -371,6 +384,11 @@ RustBuffer uniffi_feather_core_fn_method_appruntime_get_registered_modules(void*
 RustBuffer uniffi_feather_core_fn_method_appruntime_get_state(void*_Nonnull ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_HAS_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_HAS_JAVASCRIPT
+int8_t uniffi_feather_core_fn_method_appruntime_has_javascript(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_HAS_WASM
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_HAS_WASM
 int8_t uniffi_feather_core_fn_method_appruntime_has_wasm(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -379,6 +397,16 @@ int8_t uniffi_feather_core_fn_method_appruntime_has_wasm(void*_Nonnull ptr, Rust
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_HOT_RELOAD_WASM
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_HOT_RELOAD_WASM
 void uniffi_feather_core_fn_method_appruntime_hot_reload_wasm(void*_Nonnull ptr, RustBuffer wasm_bytes, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_LOAD_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_LOAD_JAVASCRIPT
+void uniffi_feather_core_fn_method_appruntime_load_javascript(void*_Nonnull ptr, RustBuffer source, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_LOAD_SIGNED_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_LOAD_SIGNED_JAVASCRIPT
+void uniffi_feather_core_fn_method_appruntime_load_signed_javascript(void*_Nonnull ptr, RustBuffer manifest_json, RustBuffer source, RustBuffer public_key, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_LOAD_WASM
@@ -391,9 +419,24 @@ void uniffi_feather_core_fn_method_appruntime_load_wasm(void*_Nonnull ptr, RustB
 int8_t uniffi_feather_core_fn_method_appruntime_poll_render_needed(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_PUSH_NATIVE_EVENT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_PUSH_NATIVE_EVENT
+void uniffi_feather_core_fn_method_appruntime_push_native_event(void*_Nonnull ptr, RustBuffer name, RustBuffer payload, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_REGISTER_MODULE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_REGISTER_MODULE
 void uniffi_feather_core_fn_method_appruntime_register_module(void*_Nonnull ptr, RustBuffer name, void*_Nonnull module, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_RENDER_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_RENDER_JAVASCRIPT
+RustBuffer uniffi_feather_core_fn_method_appruntime_render_javascript(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_RENDER_JAVASCRIPT_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_RENDER_JAVASCRIPT_DOCUMENT
+RustBuffer uniffi_feather_core_fn_method_appruntime_render_javascript_document(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_APPRUNTIME_RENDER_WASM
@@ -444,7 +487,7 @@ void uniffi_feather_core_fn_free_engine(void*_Nonnull ptr, RustCallStatus *_Nonn
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_CONSTRUCTOR_ENGINE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_CONSTRUCTOR_ENGINE_NEW
 void*_Nonnull uniffi_feather_core_fn_constructor_engine_new(RustCallStatus *_Nonnull out_status
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_ENGINE_GET_STATE
@@ -502,6 +545,11 @@ void uniffi_feather_core_fn_init_callback_vtable_nativemodule(UniffiVTableCallba
 RustBuffer uniffi_feather_core_fn_method_nativemodule_get_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_NATIVEMODULE_GET_WIDGETS
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_NATIVEMODULE_GET_WIDGETS
+RustBuffer uniffi_feather_core_fn_method_nativemodule_get_widgets(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_NATIVEMODULE_CALL_SYNC
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_METHOD_NATIVEMODULE_CALL_SYNC
 RustBuffer uniffi_feather_core_fn_method_nativemodule_call_sync(void*_Nonnull ptr, RustBuffer action, RustBuffer payload, RustCallStatus *_Nonnull out_status
@@ -512,10 +560,20 @@ RustBuffer uniffi_feather_core_fn_method_nativemodule_call_sync(void*_Nonnull pt
 void uniffi_feather_core_fn_method_nativemodule_call_async(void*_Nonnull ptr, RustBuffer action, RustBuffer payload, void*_Nonnull callback, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_FUNC_DIFF_LAYOUTS
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_FUNC_DIFF_LAYOUTS
+RustBuffer uniffi_feather_core_fn_func_diff_layouts(RustBuffer old_json, RustBuffer new_json, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_FUNC_GET_GREETING
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_FUNC_GET_GREETING
 RustBuffer uniffi_feather_core_fn_func_get_greeting(RustCallStatus *_Nonnull out_status
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_FUNC_VERIFY_MANIFEST_SIGNATURE
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_FN_FUNC_VERIFY_MANIFEST_SIGNATURE
+int8_t uniffi_feather_core_fn_func_verify_manifest_signature(RustBuffer manifest_json, RustBuffer signature_b64, RustBuffer public_key_b64, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FEATHER_CORE_RUSTBUFFER_ALLOC
@@ -798,202 +856,262 @@ void ffi_feather_core_rust_future_free_void(uint64_t handle
 void ffi_feather_core_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_FUNC_DIFF_LAYOUTS
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_FUNC_DIFF_LAYOUTS
+uint16_t uniffi_feather_core_checksum_func_diff_layouts(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_FUNC_GET_GREETING
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_FUNC_GET_GREETING
 uint16_t uniffi_feather_core_checksum_func_get_greeting(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_FUNC_VERIFY_MANIFEST_SIGNATURE
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_FUNC_VERIFY_MANIFEST_SIGNATURE
+uint16_t uniffi_feather_core_checksum_func_verify_manifest_signature(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_APPLY_ACTION_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_APPLY_ACTION_EVENT
 uint16_t uniffi_feather_core_checksum_method_appruntime_apply_action_event(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_CHECK_REQUIREMENTS
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_CHECK_REQUIREMENTS
 uint16_t uniffi_feather_core_checksum_method_appruntime_check_requirements(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DELIVER_MODULE_ERROR
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DELIVER_MODULE_ERROR
 uint16_t uniffi_feather_core_checksum_method_appruntime_deliver_module_error(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DELIVER_MODULE_RESULT
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DELIVER_MODULE_RESULT
 uint16_t uniffi_feather_core_checksum_method_appruntime_deliver_module_result(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_CONSOLE_LOGS
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_CONSOLE_LOGS
 uint16_t uniffi_feather_core_checksum_method_appruntime_drain_console_logs(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_DIAGNOSTICS
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_DIAGNOSTICS
 uint16_t uniffi_feather_core_checksum_method_appruntime_drain_diagnostics(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_MODULE_CALLS
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_MODULE_CALLS
 uint16_t uniffi_feather_core_checksum_method_appruntime_drain_module_calls(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_NATIVE_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_DRAIN_NATIVE_EVENTS
+uint16_t uniffi_feather_core_checksum_method_appruntime_drain_native_events(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_GET_ALL_STATE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_GET_ALL_STATE
 uint16_t uniffi_feather_core_checksum_method_appruntime_get_all_state(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_GET_REGISTERED_MODULES
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_GET_REGISTERED_MODULES
 uint16_t uniffi_feather_core_checksum_method_appruntime_get_registered_modules(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_GET_STATE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_GET_STATE
 uint16_t uniffi_feather_core_checksum_method_appruntime_get_state(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_HAS_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_HAS_JAVASCRIPT
+uint16_t uniffi_feather_core_checksum_method_appruntime_has_javascript(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_HAS_WASM
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_HAS_WASM
 uint16_t uniffi_feather_core_checksum_method_appruntime_has_wasm(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_HOT_RELOAD_WASM
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_HOT_RELOAD_WASM
 uint16_t uniffi_feather_core_checksum_method_appruntime_hot_reload_wasm(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_LOAD_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_LOAD_JAVASCRIPT
+uint16_t uniffi_feather_core_checksum_method_appruntime_load_javascript(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_LOAD_SIGNED_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_LOAD_SIGNED_JAVASCRIPT
+uint16_t uniffi_feather_core_checksum_method_appruntime_load_signed_javascript(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_LOAD_WASM
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_LOAD_WASM
 uint16_t uniffi_feather_core_checksum_method_appruntime_load_wasm(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_POLL_RENDER_NEEDED
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_POLL_RENDER_NEEDED
 uint16_t uniffi_feather_core_checksum_method_appruntime_poll_render_needed(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_PUSH_NATIVE_EVENT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_PUSH_NATIVE_EVENT
+uint16_t uniffi_feather_core_checksum_method_appruntime_push_native_event(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_REGISTER_MODULE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_REGISTER_MODULE
 uint16_t uniffi_feather_core_checksum_method_appruntime_register_module(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RENDER_JAVASCRIPT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RENDER_JAVASCRIPT
+uint16_t uniffi_feather_core_checksum_method_appruntime_render_javascript(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RENDER_JAVASCRIPT_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RENDER_JAVASCRIPT_DOCUMENT
+uint16_t uniffi_feather_core_checksum_method_appruntime_render_javascript_document(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RENDER_WASM
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RENDER_WASM
 uint16_t uniffi_feather_core_checksum_method_appruntime_render_wasm(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_REPORT_DIAGNOSTIC
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_REPORT_DIAGNOSTIC
 uint16_t uniffi_feather_core_checksum_method_appruntime_report_diagnostic(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RESOLVE_STATE_TEXT_NODES
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_RESOLVE_STATE_TEXT_NODES
 uint16_t uniffi_feather_core_checksum_method_appruntime_resolve_state_text_nodes(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_SET_STATE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_SET_STATE
 uint16_t uniffi_feather_core_checksum_method_appruntime_set_state(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_STATE_BOOL
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_STATE_BOOL
 uint16_t uniffi_feather_core_checksum_method_appruntime_state_bool(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_STATE_LIST
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_STATE_LIST
 uint16_t uniffi_feather_core_checksum_method_appruntime_state_list(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_STATE_VALUE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_APPRUNTIME_STATE_VALUE
 uint16_t uniffi_feather_core_checksum_method_appruntime_state_value(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_ENGINE_GET_STATE
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_ENGINE_GET_STATE
 uint16_t uniffi_feather_core_checksum_method_engine_get_state(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_ENGINE_START
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_ENGINE_START
 uint16_t uniffi_feather_core_checksum_method_engine_start(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVECALLBACK_ON_SUCCESS
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVECALLBACK_ON_SUCCESS
 uint16_t uniffi_feather_core_checksum_method_nativecallback_on_success(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVECALLBACK_ON_ERROR
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVECALLBACK_ON_ERROR
 uint16_t uniffi_feather_core_checksum_method_nativecallback_on_error(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_GET_INFO
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_GET_INFO
 uint16_t uniffi_feather_core_checksum_method_nativemodule_get_info(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_GET_WIDGETS
+#define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_GET_WIDGETS
+uint16_t uniffi_feather_core_checksum_method_nativemodule_get_widgets(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_CALL_SYNC
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_CALL_SYNC
 uint16_t uniffi_feather_core_checksum_method_nativemodule_call_sync(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_CALL_ASYNC
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_METHOD_NATIVEMODULE_CALL_ASYNC
 uint16_t uniffi_feather_core_checksum_method_nativemodule_call_async(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_CONSTRUCTOR_APPRUNTIME_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_CONSTRUCTOR_APPRUNTIME_NEW
 uint16_t uniffi_feather_core_checksum_constructor_appruntime_new(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_CONSTRUCTOR_ENGINE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FEATHER_CORE_CHECKSUM_CONSTRUCTOR_ENGINE_NEW
 uint16_t uniffi_feather_core_checksum_constructor_engine_new(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FEATHER_CORE_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_FEATHER_CORE_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_feather_core_uniffi_contract_version(void
-    
+
 );
 #endif
 

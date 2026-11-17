@@ -1,3 +1,4 @@
+pub mod javascript;
 pub mod gc;
 pub mod rewriter;
 pub mod state;
@@ -102,10 +103,12 @@ pub struct AppRuntime {
     modules: Mutex<HashMap<String, Arc<dyn NativeModule>>>,
     custom_widgets: Mutex<HashMap<String, String>>, // WidgetName -> ModuleName
     wasm_engine: Mutex<Option<WasmRuntime>>,
+    js_engine: Mutex<Option<javascript::JavaScriptRuntime>>,
     console_buffer: Arc<Mutex<Vec<String>>>,
     diagnostics_buffer: Arc<Mutex<Vec<Diagnostic>>>,
     action_payload: Arc<Mutex<String>>,
     pending_module_calls: Arc<Mutex<Vec<ModuleCall>>>,
+    next_request_id: std::sync::atomic::AtomicU64,
     event_queue: Arc<Mutex<Vec<NativeEvent>>>,
 }
 
@@ -151,22 +154,97 @@ impl AppRuntime {
             modules: Mutex::new(HashMap::new()),
             custom_widgets: Mutex::new(HashMap::new()),
             wasm_engine: Mutex::new(None),
+            js_engine: Mutex::new(None),
             console_buffer: Arc::new(Mutex::new(Vec::new())),
             diagnostics_buffer: Arc::new(Mutex::new(Vec::new())),
             action_payload: Arc::new(Mutex::new(String::new())),
             pending_module_calls: Arc::new(Mutex::new(Vec::new())),
+            next_request_id: std::sync::atomic::AtomicU64::new(0),
             event_queue: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
+    /// Load code only after the app-pinned key authenticates the manifest and
+    /// the signed JavaScript artifact metadata matches the exact source bytes.
+    pub fn load_signed_javascript(&self, manifest_json: String, source: String, public_key: String) -> Result<(), ModuleError> {
+        let failure = |message: &str| ModuleError::ExecutionFailed { err_msg: message.into() };
+        let manifest: BundleManifest = serde_json::from_str(&manifest_json).map_err(|_| failure("Invalid bundle manifest"))?;
+        let signature = manifest.signature.clone().ok_or_else(|| failure("Unsigned bundle"))?;
+        if !verify_manifest_signature(manifest_json, signature, public_key) {
+            return Err(failure("Manifest signature verification failed"));
+        }
+        if manifest.protocol_version != 1 || manifest.sdk_version != "1.0.0"
+            || manifest.runtime.as_deref() != Some("kotlin-js") || manifest.wasm.is_some() {
+            return Err(failure("Unsupported bundle protocol, SDK or runtime"));
+        }
+        let artifact = manifest.javascript.ok_or_else(|| failure("Missing JavaScript artifact"))?;
+        if artifact.path != "app.js" || artifact.bytes != source.len() as u64
+            || artifact.sha256 != artifact_for("app.js", source.as_bytes()).sha256 {
+            return Err(failure("JavaScript artifact verification failed"));
+        }
+        self.load_javascript(source)
+    }
+
+    pub fn load_javascript(&self, source: String) -> Result<(), ModuleError> {
+        use sha2::Digest;
+        let hash = hex::encode(sha2::Sha256::digest(source.as_bytes()));
+        let mut current = self.js_engine.lock().unwrap();
+        if current.as_ref().is_some_and(|engine| engine.source_hash == hash) { return Ok(()); }
+        // New code initializes against a private snapshot. A bad reload must not
+        // mutate the live state or enqueue native side effects.
+        let mut live_state = self.state.lock().unwrap();
+        let staged_state = Arc::new(Mutex::new(live_state.clone()));
+        let staged_logs = Arc::new(Mutex::new(Vec::new()));
+        let staged_calls = Arc::new(Mutex::new(Vec::new()));
+        let engine = javascript::JavaScriptRuntime::new(&source, staged_state.clone(),
+            self.needs_render.clone(), staged_logs.clone(), staged_calls.clone())
+            .map_err(|err_msg| ModuleError::ExecutionFailed { err_msg })?;
+        engine.render().map_err(|err_msg| ModuleError::ExecutionFailed { err_msg })?;
+        *live_state = staged_state.lock().unwrap().clone();
+        engine.bind_state(self.state.clone());
+        self.console_buffer.lock().unwrap().extend(staged_logs.lock().unwrap().drain(..));
+        self.pending_module_calls.lock().unwrap().extend(staged_calls.lock().unwrap().drain(..));
+        // Rebind logs/module queues for subsequent calls as well.
+        engine.bind_outputs(self.console_buffer.clone(), self.pending_module_calls.clone());
+        *current = Some(engine);
+        *self.wasm_engine.lock().unwrap() = None;
+        *self.needs_render.lock().unwrap() = true;
+        Ok(())
+    }
+
+    pub fn render_javascript(&self) -> Result<String, ModuleError> {
+        let guard = self.js_engine.lock().unwrap();
+        let engine = guard.as_ref().ok_or_else(|| ModuleError::ExecutionFailed { err_msg: "No JavaScript application loaded".into() })?;
+        let events = self.drain_native_events();
+        if !events.is_empty() {
+            engine.events(serde_json::to_string(&events).map_err(|error| ModuleError::ExecutionFailed { err_msg: error.to_string() })?)
+                .map_err(|err_msg| ModuleError::ExecutionFailed { err_msg })?;
+        }
+        engine.render().map_err(|err_msg| ModuleError::ExecutionFailed { err_msg })
+    }
+
+    pub fn has_javascript(&self) -> bool { self.js_engine.lock().unwrap().is_some() }
+
+    pub fn render_javascript_document(&self) -> Result<String, ModuleError> {
+        let root: serde_json::Value = serde_json::from_str(&self.render_javascript()?)
+            .map_err(|error| ModuleError::ExecutionFailed { err_msg: error.to_string() })?;
+        let state: serde_json::Value = serde_json::from_str(&self.get_all_state())
+            .map_err(|error| ModuleError::ExecutionFailed { err_msg: error.to_string() })?;
+        let state = state.as_object().unwrap().iter().map(|(key, value)| {
+            (key.clone(), serde_json::Value::String(value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string())))
+        }).collect::<serde_json::Map<String, serde_json::Value>>();
+        let diagnostics = self.drain_diagnostics().into_iter().map(|diagnostic| serde_json::json!({"level":diagnostic.level,"message":diagnostic.message})).collect::<Vec<_>>();
+        Ok(self.resolve_state_text_nodes(serde_json::json!({"type":"render", "protocol_version":1, "root":root, "state":state, "diagnostics":diagnostics}).to_string()))
+    }
+
     pub fn load_wasm(&self, wasm_bytes: Vec<u8>) -> Result<(), ModuleError> {
-        let mut rewriter = crate::rewriter::GcRewriter::new(&wasm_bytes);
-        let baseline_wasm = match rewriter.rewrite() {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                println!("Feather: Failed to rewrite WasmGC module: {}", e);
-                wasm_bytes
-            }
+        // Already supported modules must retain their original semantics; only
+        // attempt the experimental GC translation when native validation fails.
+        let baseline_wasm = if wasmi::Module::new(&wasmi::Engine::default(), &wasm_bytes[..]).is_ok() {
+            wasm_bytes
+        } else {
+            crate::rewriter::GcRewriter::new(&wasm_bytes).rewrite()
+                .map_err(|error| ModuleError::ExecutionFailed { err_msg: format!("Unsupported WASM module: {error}") })?
         };
 
         let runtime = WasmRuntime::new(
@@ -177,6 +255,7 @@ impl AppRuntime {
             self.pending_module_calls.clone(),
             self.event_queue.clone(),
         ).map_err(|e| ModuleError::ExecutionFailed { err_msg: format!("WASM error: {}", e) })?;
+        *self.js_engine.lock().unwrap() = None;
         *self.wasm_engine.lock().unwrap() = Some(runtime);
         Ok(())
     }
@@ -356,6 +435,7 @@ impl AppRuntime {
         calls.iter().map(|c| {
             serde_json::json!({
                 "type": "module_call",
+                "id": format!("request_{}", self.next_request_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed)),
                 "module": c.module_name,
                 "method": c.action,
                 "payload": serde_json::from_str::<serde_json::Value>(&c.payload).unwrap_or(serde_json::Value::Null),
@@ -375,7 +455,16 @@ impl AppRuntime {
                     let payload_val = json.get("payload").cloned().unwrap_or(serde_json::Value::Null);
                     let cb_key = json.get("resultStateKey").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                     
-                    self.pending_module_calls.lock().unwrap().push(ModuleCall {
+                    if module_name.is_empty() || method.is_empty() {
+                        self.report_diagnostic("error".into(), "Module requests require module and method".into());
+                        return;
+                    }
+                    let mut queue = self.pending_module_calls.lock().unwrap();
+                    if queue.len() >= 128 {
+                        self.report_diagnostic("error".into(), "Module request queue is full".into());
+                        return;
+                    }
+                    queue.push(ModuleCall {
                         module_name,
                         action: method,
                         payload: payload_val.to_string(),
@@ -390,6 +479,22 @@ impl AppRuntime {
                 (a, p)
             } else { (action.to_string(), serde_json::Value::Null) }
         } else { (action.to_string(), serde_json::Value::Null) };
+
+        // SDK button actions may contain a serialized module descriptor. Route
+        // that intent to the native bridge rather than to an app action handler.
+        if serde_json::from_str::<serde_json::Value>(&action_str).ok()
+            .is_some_and(|value| value.get("type").and_then(|v| v.as_str()) == Some("module_call")) {
+            self.apply_action_event(&action_str);
+            return;
+        }
+
+        if let Some(engine) = self.js_engine.lock().unwrap().as_ref() {
+            if let Err(error) = engine.action(&action_str, Some(payload_val.to_string())) {
+                self.report_diagnostic("error".to_string(), format!("JavaScript action failed: {error}"));
+            }
+            *self.needs_render.lock().unwrap() = true;
+            return;
+        }
 
         if let Some(engine) = self.wasm_engine.lock().unwrap().as_mut() {
             if let Err(e) = engine.call_action(&action_str) {

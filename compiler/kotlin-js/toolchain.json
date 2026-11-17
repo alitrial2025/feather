@@ -1,0 +1,8 @@
+{
+  "kotlin": "2.1.10",
+  "artifacts": [
+    {"url":"https://github.com/JetBrains/kotlin/releases/download/v2.1.10/kotlin-compiler-2.1.10.zip","sha256":"c6e9e2636889828e19c8811d5ab890862538c89dc2a3101956dfee3c2a8ba6b1","path":"compiler.zip"},
+    {"url":"https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-js/1.8.0/kotlinx-serialization-core-js-1.8.0.klib","sha256":"90a7a80c26a01676ab82ce177c17598aa198c183e2958d68c9c1086791ff00ed","path":"kotlin-libs/serialization-core.klib"},
+    {"url":"https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-js/1.8.0/kotlinx-serialization-json-js-1.8.0.klib","sha256":"b9c3da960c095673663c9c7286cb04e574bfdf842ae46769288120b5bf198e06","path":"kotlin-libs/serialization-json.klib"}
+  ]
+}

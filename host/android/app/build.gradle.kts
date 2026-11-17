@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "dev.feather.host"
     compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "dev.feather.host"
@@ -14,39 +15,34 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        val bundleKey = providers.gradleProperty("featherBundlePublicKey").orElse("").get()
+        require(bundleKey.isEmpty() || Regex("[A-Za-z0-9+/]{43}=").matches(bundleKey)) {
+            "featherBundlePublicKey must be a base64 raw Ed25519 public key"
+        }
+        resValue("string", "feather_bundle_public_key", bundleKey)
 
         ndk {
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+            abiFilters.addAll(providers.gradleProperty("featherAbis").orElse("arm64-v8a").get().split(','))
         }
     }
 
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
+            providers.gradleProperty("featherJniLibs").orNull?.let { jniLibs.srcDir(it) }
+            assets.srcDir(layout.buildDirectory.dir("generated/runtime-assets"))
         }
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file("../feather.keystore")
-            storePassword = "feather"
-            keyAlias = "feather"
-            keyPassword = "feather"
-        }
-    }
 
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
         }
     }
 
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -58,6 +54,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.activity:activity-compose:1.9.0")
@@ -72,7 +70,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("net.java.dev.jna:jna:5.14.0@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
     implementation("com.google.flatbuffers:flatbuffers-java:24.3.25")
     implementation("org.msgpack:jackson-dataformat-msgpack:0.9.8")
 
@@ -84,3 +82,21 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
 }
+
+// Keep bundle output outside tracked sources and remove stale staged assets when
+// switching back to a development host without a packaged application.
+val runtimeBundle = providers.gradleProperty("featherBundleDir")
+val runtimeAssets = layout.buildDirectory.dir("generated/runtime-assets")
+val stageRuntimeBundle = tasks.register("stageRuntimeBundle") {
+    inputs.property("bundlePath", runtimeBundle.orElse(""))
+    if (runtimeBundle.isPresent) inputs.dir(runtimeBundle.get())
+    outputs.dir(runtimeAssets)
+    doLast {
+        delete(runtimeAssets)
+        runtimeBundle.orNull?.let { path ->
+            require(file(path).resolve("manifest.json").isFile) { "featherBundleDir must contain a signed manifest.json" }
+            copy { from(path); into(runtimeAssets.get().dir("feather")) }
+        }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(stageRuntimeBundle) }

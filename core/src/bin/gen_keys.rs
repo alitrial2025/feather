@@ -1,3 +1,4 @@
+use ring::signature::KeyPair;
 fn main() {
     let rng = ring::rand::SystemRandom::new();
     let pkcs8_bytes = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();

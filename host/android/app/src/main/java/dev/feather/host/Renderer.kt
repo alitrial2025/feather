@@ -42,6 +42,16 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import org.json.JSONObject
+import com.google.flatbuffers.FlexBuffers
+import java.nio.ByteBuffer
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.msgpack.jackson.dataformat.MessagePackFactory
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import com.google.flatbuffers.Table
+import java.nio.ByteOrder
+import kotlinx.coroutines.delay
+
 
 // MARK: - Renderer
 
@@ -825,11 +835,7 @@ fun FeatherRenderer(
     }
 }
 
-import com.google.flatbuffers.FlexBuffers
-import java.nio.ByteBuffer
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import org.msgpack.jackson.dataformat.MessagePackFactory
 
 // MARK: - MessagePack Rendering
 
@@ -841,7 +847,7 @@ fun parseMessagePackMessage(bytes: ByteArray, registry: ModuleRegistry): Pair<Fe
         val root = parseJacksonNode(tree)
         Pair(root, emptyList())
     } catch (e: Exception) {
-        Pair(FeatherNode.TextNode("MessagePack Error: ${e.message}"), listOf(e.message ?: "Unknown error"))
+        Pair(FeatherNode.TextNode("MessagePack Error: ${e.message}"), listOf(e.message ?: e.javaClass.simpleName))
     }
 }
 
@@ -912,7 +918,7 @@ fun parseFlexBuffersMessage(bytes: ByteArray, registry: ModuleRegistry): Pair<Fe
         val node = parseFlexNode(root)
         Pair(node, emptyList())
     } catch (e: Exception) {
-        Pair(FeatherNode.TextNode("FlexBuffers Error: ${e.message}"), listOf(e.message ?: "Unknown error"))
+        Pair(FeatherNode.TextNode("FlexBuffers Error: ${e.message}"), listOf(e.message ?: e.javaClass.simpleName))
     }
 }
 
@@ -1578,8 +1584,6 @@ private fun parseHexColor(hex: String?): Color? {
 
 // MARK: - Style Application Helpers
 
-import androidx.compose.animation.core.*
-import androidx.compose.ui.graphics.graphicsLayer
 
 // ... (other imports)
 
@@ -1793,8 +1797,6 @@ private fun buildTextStyle(style: FeatherStyle?): TextStyle {
 
 // MARK: - FlatBuffers Zero-Copy Decoding
 
-import com.google.flatbuffers.Table
-import java.nio.ByteOrder
 
 fun parseFlatBuffersMessage(bytes: ByteArray, registry: ModuleRegistry): Pair<FeatherNode, List<String>> {
     return try {
@@ -1803,7 +1805,7 @@ fun parseFlatBuffersMessage(bytes: ByteArray, registry: ModuleRegistry): Pair<Fe
         val node = toFeatherNode(root)
         Pair(node, emptyList())
     } catch (e: Exception) {
-        Pair(FeatherNode.TextNode("FlatBuffers Error: ${e.message}"), listOf(e.message ?: "Unknown error"))
+        Pair(FeatherNode.TextNode("FlatBuffers Error: ${e.message}"), listOf(e.message ?: e.javaClass.simpleName))
     }
 }
 
@@ -1870,7 +1872,7 @@ private fun toFeatherNode(flatNode: FlatNode): FeatherNode {
 
     return when (flatNode.type().toInt()) {
         0 -> FeatherNode.TextNode(flatNode.text() ?: "", style) // Text
-        1 -> FeatherNode.StateTextNode(flatNode.key() ?: "", flatNode.prefix() ?: "", flatNode.fallback() ?: "", style) // StateText
+        1 -> FeatherNode.TextNode((flatNode.prefix() ?: "") + (flatNode.fallback() ?: ""), style) // StateText
         2 -> FeatherNode.ButtonNode(flatNode.text() ?: "", flatNode.action() ?: "", flatNode.enabled(), style) // Button
         3 -> FeatherNode.TextInputNode(flatNode.value() ?: "", flatNode.placeholder() ?: "", flatNode.action() ?: "", flatNode.label(), style) // TextInput
         4 -> FeatherNode.ImageNode(flatNode.src() ?: "", flatNode.alt() ?: "", style) // Image
@@ -1986,7 +1988,7 @@ private fun toFeatherNode(flatNode: FlatNode): FeatherNode {
             FeatherNode.TooltipNode(flatNode.message() ?: "", if (child != null) toFeatherNode(child) else FeatherNode.SpacerNode(1))
         }
         33 -> FeatherNode.FloatingActionButtonNode(flatNode.name() ?: "", flatNode.action() ?: "", flatNode.background(), flatNode.color()) // FloatingActionButton
-        34 -> FeatherNode.PlaceholderNode(flatNode.width(), flatNode.height(), if (flatNode.cornerRadius() != 0) flatNode.cornerRadius() else null) // Placeholder
+        34 -> FeatherNode.PlaceholderNode(style?.width, style?.height, if (flatNode.cornerRadius() != 0) flatNode.cornerRadius() else null) // Placeholder
         35 -> { // Scaffold
             val topBar = flatNode.topBar(FlatNode())
             val bottomBar = flatNode.bottomBar(FlatNode())
@@ -2103,11 +2105,11 @@ private fun toFeatherNode(flatNode: FlatNode): FeatherNode {
         }
         52 -> { // PullToRefresh
             val content = flatNode.content(FlatNode())
-            FeatherNode.PullToRefreshNode(flatNode.refreshing(), flatNode.action() ?: "", if (content != null) toFeatherNode(content) else FeatherNode.SpacerNode(1))
+            FeatherNode.PullToRefreshNode(action = flatNode.action() ?: "", child = if (content != null) toFeatherNode(content) else FeatherNode.SpacerNode(1), refreshing = flatNode.refreshing())
         }
         53 -> { // Custom
             val child = flatNode.child(FlatNode())
-            FeatherNode.CustomNode(flatNode.name() ?: "", flatNode.module() ?: "", flatNode.props() ?: "{}", if (child != null) toFeatherNode(child) else null)
+            FeatherNode.CustomNode(name = flatNode.name() ?: "", module = flatNode.module() ?: "", props = JSONObject(flatNode.props() ?: "{}"), style = style)
         }
         else -> FeatherNode.TextNode("Unsupported flat widget: ${flatNode.type()}", style)
     }
@@ -2125,14 +2127,14 @@ open class FlatStyle : Table() {
         __reset(_i, _bb)
         return this
     }
-    fun color(): String? = __string(__offset(4))
+    fun color(): String? = if (__offset(4) != 0) __string(bb_pos + __offset(4)) else null
     fun fontSize(): Int = if (__offset(6) != 0) bb.getInt(bb_pos + __offset(6)) else 0
-    fun fontWeight(): String? = __string(__offset(8))
-    fun fontStyle(): String? = __string(__offset(10))
-    fun textAlign(): String? = __string(__offset(12))
-    fun textDecoration(): String? = __string(__offset(14))
-    fun fontFamily(): String? = __string(__offset(16))
-    fun background(): String? = __string(__offset(18))
+    fun fontWeight(): String? = if (__offset(8) != 0) __string(bb_pos + __offset(8)) else null
+    fun fontStyle(): String? = if (__offset(10) != 0) __string(bb_pos + __offset(10)) else null
+    fun textAlign(): String? = if (__offset(12) != 0) __string(bb_pos + __offset(12)) else null
+    fun textDecoration(): String? = if (__offset(14) != 0) __string(bb_pos + __offset(14)) else null
+    fun fontFamily(): String? = if (__offset(16) != 0) __string(bb_pos + __offset(16)) else null
+    fun background(): String? = if (__offset(18) != 0) __string(bb_pos + __offset(18)) else null
     fun padding(): Int = if (__offset(20) != 0) bb.getInt(bb_pos + __offset(20)) else 0
     fun paddingHorizontal(): Int = if (__offset(22) != 0) bb.getInt(bb_pos + __offset(22)) else 0
     fun paddingVertical(): Int = if (__offset(24) != 0) bb.getInt(bb_pos + __offset(24)) else 0
@@ -2142,35 +2144,35 @@ open class FlatStyle : Table() {
     fun paddingEnd(): Int = if (__offset(32) != 0) bb.getInt(bb_pos + __offset(32)) else 0
     fun margin(): Int = if (__offset(34) != 0) bb.getInt(bb_pos + __offset(34)) else 0
     fun cornerRadius(): Int = if (__offset(36) != 0) bb.getInt(bb_pos + __offset(36)) else 0
-    fun borderColor(): String? = __string(__offset(38))
+    fun borderColor(): String? = if (__offset(38) != 0) __string(bb_pos + __offset(38)) else null
     fun borderWidth(): Int = if (__offset(40) != 0) bb.getInt(bb_pos + __offset(40)) else 0
-    fun width(): String? = __string(__offset(42))
-    fun height(): String? = __string(__offset(44))
-    fun minWidth(): String? = __string(__offset(46))
-    fun minHeight(): String? = __string(__offset(48))
-    fun maxWidth(): String? = __string(__offset(50))
-    fun maxHeight(): String? = __string(__offset(52))
-    fun alignment(): String? = __string(__offset(54))
+    fun width(): String? = if (__offset(42) != 0) __string(bb_pos + __offset(42)) else null
+    fun height(): String? = if (__offset(44) != 0) __string(bb_pos + __offset(44)) else null
+    fun minWidth(): String? = if (__offset(46) != 0) __string(bb_pos + __offset(46)) else null
+    fun minHeight(): String? = if (__offset(48) != 0) __string(bb_pos + __offset(48)) else null
+    fun maxWidth(): String? = if (__offset(50) != 0) __string(bb_pos + __offset(50)) else null
+    fun maxHeight(): String? = if (__offset(52) != 0) __string(bb_pos + __offset(52)) else null
+    fun alignment(): String? = if (__offset(54) != 0) __string(bb_pos + __offset(54)) else null
     fun spacing(): Int = if (__offset(56) != 0) bb.getInt(bb_pos + __offset(56)) else 0
     fun opacity(): Float = if (__offset(58) != 0) bb.getFloat(bb_pos + __offset(58)) else 1.0f
-    fun textColor(): String? = __string(__offset(60))
-    fun placeholderColor(): String? = __string(__offset(62))
-    fun contentMode(): String? = __string(__offset(64))
-    fun shadow(): String? = __string(__offset(66))
+    fun textColor(): String? = if (__offset(60) != 0) __string(bb_pos + __offset(60)) else null
+    fun placeholderColor(): String? = if (__offset(62) != 0) __string(bb_pos + __offset(62)) else null
+    fun contentMode(): String? = if (__offset(64) != 0) __string(bb_pos + __offset(64)) else null
+    fun shadow(): String? = if (__offset(66) != 0) __string(bb_pos + __offset(66)) else null
     fun elevation(): Int = if (__offset(68) != 0) bb.getInt(bb_pos + __offset(68)) else 0
     fun maxLines(): Int = if (__offset(70) != 0) bb.getInt(bb_pos + __offset(70)) else 0
     fun flex(): Int = if (__offset(72) != 0) bb.getInt(bb_pos + __offset(72)) else 0
     fun fillMaxWidth(): Boolean = if (__offset(74) != 0) bb.get(bb_pos + __offset(74)).toInt() != 0 else false
     fun fillMaxHeight(): Boolean = if (__offset(76) != 0) bb.get(bb_pos + __offset(76)).toInt() != 0 else false
     fun aspectRatio(): Float = if (__offset(78) != 0) bb.getFloat(bb_pos + __offset(78)) else 0.0f
-    fun gradient(): String? = __string(__offset(80))
+    fun gradient(): String? = if (__offset(80) != 0) __string(bb_pos + __offset(80)) else null
     fun clip(): Boolean = if (__offset(82) != 0) bb.get(bb_pos + __offset(82)).toInt() != 0 else false
-    fun keyboardType(): String? = __string(__offset(84))
+    fun keyboardType(): String? = if (__offset(84) != 0) __string(bb_pos + __offset(84)) else null
     fun maxLength(): Int = if (__offset(86) != 0) bb.getInt(bb_pos + __offset(86)) else 0
     fun multiline(): Boolean = if (__offset(88) != 0) bb.get(bb_pos + __offset(88)).toInt() != 0 else false
     fun secure(): Boolean = if (__offset(90) != 0) bb.get(bb_pos + __offset(90)).toInt() != 0 else false
-    fun direction(): String? = __string(__offset(92))
-    fun position(): String? = __string(__offset(94))
+    fun direction(): String? = if (__offset(92) != 0) __string(bb_pos + __offset(92)) else null
+    fun position(): String? = if (__offset(94) != 0) __string(bb_pos + __offset(94)) else null
     fun top(): Float = if (__offset(96) != 0) bb.getFloat(bb_pos + __offset(96)) else 0.0f
     fun bottom(): Float = if (__offset(98) != 0) bb.getFloat(bb_pos + __offset(98)) else 0.0f
     fun left(): Float = if (__offset(100) != 0) bb.getFloat(bb_pos + __offset(100)) else 0.0f
@@ -2183,9 +2185,9 @@ open class FlatRadioOption : Table() {
         __reset(_i, _bb)
         return this
     }
-    fun value(): String? = __string(__offset(4))
-    fun label(): String? = __string(__offset(6))
-    fun color(): String? = __string(__offset(8))
+    fun value(): String? = if (__offset(4) != 0) __string(bb_pos + __offset(4)) else null
+    fun label(): String? = if (__offset(6) != 0) __string(bb_pos + __offset(6)) else null
+    fun color(): String? = if (__offset(8) != 0) __string(bb_pos + __offset(8)) else null
 }
 
 open class FlatTabItem : Table() {
@@ -2193,8 +2195,8 @@ open class FlatTabItem : Table() {
         __reset(_i, _bb)
         return this
     }
-    fun title(): String? = __string(__offset(4))
-    fun icon(): String? = __string(__offset(6))
+    fun title(): String? = if (__offset(4) != 0) __string(bb_pos + __offset(4)) else null
+    fun icon(): String? = if (__offset(6) != 0) __string(bb_pos + __offset(6)) else null
 }
 
 open class FlatDrawerItem : Table() {
@@ -2202,10 +2204,10 @@ open class FlatDrawerItem : Table() {
         __reset(_i, _bb)
         return this
     }
-    fun title(): String? = __string(__offset(4))
-    fun icon(): String? = __string(__offset(6))
-    fun route(): String? = __string(__offset(8))
-    fun action(): String? = __string(__offset(10))
+    fun title(): String? = if (__offset(4) != 0) __string(bb_pos + __offset(4)) else null
+    fun icon(): String? = if (__offset(6) != 0) __string(bb_pos + __offset(6)) else null
+    fun route(): String? = if (__offset(8) != 0) __string(bb_pos + __offset(8)) else null
+    fun action(): String? = if (__offset(10) != 0) __string(bb_pos + __offset(10)) else null
 }
 
 open class FlatScreen : Table() {
@@ -2213,7 +2215,7 @@ open class FlatScreen : Table() {
         __reset(_i, _bb)
         return this
     }
-    fun route(): String? = __string(__offset(4))
+    fun route(): String? = if (__offset(4) != 0) __string(bb_pos + __offset(4)) else null
     fun node(obj: FlatNode): FlatNode? = if (__offset(6) != 0) obj.__init(__indirect(bb_pos + __offset(6)), bb) else null
 }
 
@@ -2230,61 +2232,61 @@ open class FlatNode : Table() {
         return this
     }
     fun type(): Byte = if (__offset(4) != 0) bb.get(bb_pos + __offset(4)) else 0
-    fun id(): String? = __string(__offset(6))
-    fun text(): String? = __string(__offset(8))
-    fun action(): String? = __string(__offset(10))
+    fun id(): String? = if (__offset(6) != 0) __string(bb_pos + __offset(6)) else null
+    fun text(): String? = if (__offset(8) != 0) __string(bb_pos + __offset(8)) else null
+    fun action(): String? = if (__offset(10) != 0) __string(bb_pos + __offset(10)) else null
     fun enabled(): Boolean = if (__offset(12) != 0) bb.get(bb_pos + __offset(12)).toInt() != 0 else true
-    fun value(): String? = __string(__offset(14))
-    fun placeholder(): String? = __string(__offset(16))
-    fun label(): String? = __string(__offset(18))
-    fun src(): String? = __string(__offset(20))
-    fun alt(): String? = __string(__offset(22))
-    fun name(): String? = __string(__offset(24))
+    fun value(): String? = if (__offset(14) != 0) __string(bb_pos + __offset(14)) else null
+    fun placeholder(): String? = if (__offset(16) != 0) __string(bb_pos + __offset(16)) else null
+    fun label(): String? = if (__offset(18) != 0) __string(bb_pos + __offset(18)) else null
+    fun src(): String? = if (__offset(20) != 0) __string(bb_pos + __offset(20)) else null
+    fun alt(): String? = if (__offset(22) != 0) __string(bb_pos + __offset(22)) else null
+    fun name(): String? = if (__offset(24) != 0) __string(bb_pos + __offset(24)) else null
     fun size(): Int = if (__offset(26) != 0) bb.getInt(bb_pos + __offset(26)) else 24
-    fun color(): String? = __string(__offset(28))
-    fun background(): String? = __string(__offset(30))
+    fun color(): String? = if (__offset(28) != 0) __string(bb_pos + __offset(28)) else null
+    fun background(): String? = if (__offset(30) != 0) __string(bb_pos + __offset(30)) else null
     fun flex(): Int = if (__offset(32) != 0) bb.getInt(bb_pos + __offset(32)) else 1
     fun thickness(): Int = if (__offset(34) != 0) bb.getInt(bb_pos + __offset(34)) else 1
     fun indent(): Int = if (__offset(36) != 0) bb.getInt(bb_pos + __offset(36)) else 0
-    fun direction(): String? = __string(__offset(38))
+    fun direction(): String? = if (__offset(38) != 0) __string(bb_pos + __offset(38)) else null
     fun ratio(): Float = if (__offset(40) != 0) bb.getFloat(bb_pos + __offset(40)) else 1.0f
     fun checked(): Boolean = if (__offset(42) != 0) bb.get(bb_pos + __offset(42)).toInt() != 0 else false
-    fun trackColor(): String? = __string(__offset(44))
-    fun thumbColor(): String? = __string(__offset(46))
-    fun selected(): String? = __string(__offset(48))
+    fun trackColor(): String? = if (__offset(44) != 0) __string(bb_pos + __offset(44)) else null
+    fun thumbColor(): String? = if (__offset(46) != 0) __string(bb_pos + __offset(46)) else null
+    fun selected(): String? = if (__offset(48) != 0) __string(bb_pos + __offset(48)) else null
     fun min(): Float = if (__offset(50) != 0) bb.getFloat(bb_pos + __offset(50)) else 0.0f
     fun max(): Float = if (__offset(52) != 0) bb.getFloat(bb_pos + __offset(52)) else 100.0f
     fun step(): Float = if (__offset(54) != 0) bb.getFloat(bb_pos + __offset(54)) else 0.0f
     fun progress(): Float = if (__offset(56) != 0) bb.getFloat(bb_pos + __offset(56)) else 0.0f
     fun strokeWidth(): Int = if (__offset(58) != 0) bb.getInt(bb_pos + __offset(58)) else 4
     fun visible(): Boolean = if (__offset(60) != 0) bb.get(bb_pos + __offset(60)).toInt() != 0 else true
-    fun title(): String? = __string(__offset(62))
-    fun confirmText(): String? = __string(__offset(64))
-    fun dismissText(): String? = __string(__offset(66))
-    fun confirmAction(): String? = __string(__offset(68))
-    fun dismissAction(): String? = __string(__offset(70))
-    fun message(): String? = __string(__offset(72))
-    fun actionText(): String? = __string(__offset(74))
+    fun title(): String? = if (__offset(62) != 0) __string(bb_pos + __offset(62)) else null
+    fun confirmText(): String? = if (__offset(64) != 0) __string(bb_pos + __offset(64)) else null
+    fun dismissText(): String? = if (__offset(66) != 0) __string(bb_pos + __offset(66)) else null
+    fun confirmAction(): String? = if (__offset(68) != 0) __string(bb_pos + __offset(68)) else null
+    fun dismissAction(): String? = if (__offset(70) != 0) __string(bb_pos + __offset(70)) else null
+    fun message(): String? = if (__offset(72) != 0) __string(bb_pos + __offset(72)) else null
+    fun actionText(): String? = if (__offset(74) != 0) __string(bb_pos + __offset(74)) else null
     fun count(): Int = if (__offset(76) != 0) bb.getInt(bb_pos + __offset(76)) else 0
-    fun iconColor(): String? = __string(__offset(78))
+    fun iconColor(): String? = if (__offset(78) != 0) __string(bb_pos + __offset(78)) else null
     fun cornerRadius(): Int = if (__offset(80) != 0) bb.getInt(bb_pos + __offset(80)) else 0
-    fun subtitle(): String? = __string(__offset(82))
-    fun navigationIcon(): String? = __string(__offset(84))
-    fun navigationAction(): String? = __string(__offset(86))
+    fun subtitle(): String? = if (__offset(82) != 0) __string(bb_pos + __offset(82)) else null
+    fun navigationIcon(): String? = if (__offset(84) != 0) __string(bb_pos + __offset(84)) else null
+    fun navigationAction(): String? = if (__offset(86) != 0) __string(bb_pos + __offset(86)) else null
     fun currentPage(): Int = if (__offset(88) != 0) bb.getInt(bb_pos + __offset(88)) else 0
-    fun initialRoute(): String? = __string(__offset(90))
+    fun initialRoute(): String? = if (__offset(90) != 0) __string(bb_pos + __offset(90)) else null
     fun autoplay(): Boolean = if (__offset(92) != 0) bb.get(bb_pos + __offset(92)).toInt() != 0 else false
     fun controls(): Boolean = if (__offset(94) != 0) bb.get(bb_pos + __offset(94)).toInt() != 0 else true
     fun loop(): Boolean = if (__offset(96) != 0) bb.get(bb_pos + __offset(96)).toInt() != 0 else false
-    fun poster(): String? = __string(__offset(98))
-    fun url(): String? = __string(__offset(100))
-    fun onTap(): String? = __string(__offset(102))
-    fun onPan(): String? = __string(__offset(104))
+    fun poster(): String? = if (__offset(98) != 0) __string(bb_pos + __offset(98)) else null
+    fun url(): String? = if (__offset(100) != 0) __string(bb_pos + __offset(100)) else null
+    fun onTap(): String? = if (__offset(102) != 0) __string(bb_pos + __offset(102)) else null
+    fun onPan(): String? = if (__offset(104) != 0) __string(bb_pos + __offset(104)) else null
     fun ripple(): Boolean = if (__offset(106) != 0) bb.get(bb_pos + __offset(106)).toInt() != 0 else true
     fun duration(): Int = if (__offset(108) != 0) bb.getInt(bb_pos + __offset(108)) else 0
     fun refreshing(): Boolean = if (__offset(110) != 0) bb.get(bb_pos + __offset(110)).toInt() != 0 else false
-    fun module(): String? = __string(__offset(112))
-    fun props(): String? = __string(__offset(114))
+    fun module(): String? = if (__offset(112) != 0) __string(bb_pos + __offset(112)) else null
+    fun props(): String? = if (__offset(114) != 0) __string(bb_pos + __offset(114)) else null
     fun style(obj: FlatStyle): FlatStyle? = if (__offset(116) != 0) obj.__init(__indirect(bb_pos + __offset(116)), bb) else null
     
     fun children(index: Int): FlatNode? = children(FlatNode(), index)
@@ -2346,9 +2348,9 @@ open class FlatNode : Table() {
         return if (o != 0) __vector_len(o) else 0
     }
 
-    fun key(): String? = __string(__offset(130))
-    fun prefix(): String? = __string(__offset(132))
-    fun fallback(): String? = __string(__offset(134))
+    fun key(): String? = if (__offset(130) != 0) __string(bb_pos + __offset(130)) else null
+    fun prefix(): String? = if (__offset(132) != 0) __string(bb_pos + __offset(132)) else null
+    fun fallback(): String? = if (__offset(134) != 0) __string(bb_pos + __offset(134)) else null
     
     fun child(obj: FlatNode): FlatNode? = if (__offset(136) != 0) obj.__init(__indirect(bb_pos + __offset(136)), bb) else null
     fun content(obj: FlatNode): FlatNode? = if (__offset(138) != 0) obj.__init(__indirect(bb_pos + __offset(138)), bb) else null

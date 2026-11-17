@@ -1,0 +1,66 @@
+name: Rust platform
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      FEATHER_TOOLS_HOME: ${{ runner.temp }}/feather-tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: cargo test --locked --manifest-path core/Cargo.toml
+      - run: cargo test --locked --manifest-path cli/Cargo.toml
+      - run: cargo build --locked --manifest-path cli/Cargo.toml
+      - run: python3 scripts/smoke_cli.py cli/target/debug/feather-cli
+      - run: cargo build --locked --manifest-path core/Cargo.toml
+      - run: cargo run --locked --manifest-path core/Cargo.toml --example generate_layout_fixture
+      - run: git diff --exit-code -- host/android/app/src/test/resources/layout.fb
+      - run: python3 scripts/smoke_kotlin_js.py cli/target/debug/feather-cli core/target/debug/feather-bundle-check
+      - run: python3 scripts/smoke_native_bindings.py
+      - run: python3 scripts/smoke_native_bindings.py --refresh
+
+  android:
+    runs-on: ubuntu-latest
+    env:
+      FEATHER_TOOLS_HOME: ${{ runner.temp }}/feather-tools
+      CARGO_TARGET_DIR: ${{ github.workspace }}/core/target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          sdkmanager "platforms;android-36" "build-tools;34.0.0" "ndk;27.0.12077973"
+      - run: host/android/gradlew -p host/android :app:testDebugUnitTest --no-daemon --max-workers=2
+      - run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
+          python3 scripts/build_android_sample.py
+
+  ios:
+    runs-on: macos-15
+    env:
+      FEATHER_TOOLS_HOME: ${{ runner.temp }}/feather-tools
+      CARGO_TARGET_DIR: ${{ github.workspace }}/core/target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: brew install xcodegen
+      - run: python3 scripts/build_ios_sample.py

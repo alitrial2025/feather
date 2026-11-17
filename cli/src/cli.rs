@@ -62,6 +62,11 @@ pub enum Commands {
         #[arg(long, help = "Target platform: ios or android")]
         target: String,
     },
+    /// Compile Kotlin using the experimental no-JIT JavaScript runtime backend
+    CompileJs {
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+    },
     /// Compile Kotlin source to WebAssembly
     CompileWasm {
         #[arg(long, default_value = ".")]

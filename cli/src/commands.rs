@@ -258,7 +258,10 @@ class App : FeatherApp() {{
 }
 
 pub async fn build_production(project_path: PathBuf, target: String) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🪶 Feather Build: Generating production bundle for {}...", target);
+    if !matches!(target.as_str(), "android" | "ios") {
+        return Err("Target must be android or ios".into());
+    }
+    println!("🪶 Feather Build: Generating bundle for {}...", target);
 
     let manifest_path = project_path.join("feather.json");
     if !manifest_path.exists() {
@@ -267,6 +270,10 @@ pub async fn build_production(project_path: PathBuf, target: String) -> Result<(
 
     let manifest_source = fs::read_to_string(&manifest_path)?;
     let manifest: FeatherManifest = serde_json::from_str(&manifest_source)?;
+
+    if manifest.runtime.as_deref() == Some("kotlin-js") {
+        return build_javascript_bundle(&project_path, &target);
+    }
 
     let output_dir = project_path.join("dist").join(&target);
     fs::create_dir_all(&output_dir)?;
@@ -354,14 +361,8 @@ pub async fn build_production(project_path: PathBuf, target: String) -> Result<(
 }
 
 pub async fn compile_wasm(project_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🪶 Compiling Kotlin → WebAssembly...");
-    let feather_dir = project_path.join(".feather");
-    if !feather_dir.exists() {
-        fs::create_dir_all(&feather_dir)?;
-    }
-    let output_wasm = feather_dir.join("app.wasm");
-    fs::write(output_wasm, b"\0asm\x01\0\0\0")?;
-    Ok(())
+    let _ = project_path;
+    Err("Kotlin-to-WASM compilation is not implemented. No artifact was generated. Production builds are blocked until a real compiler pipeline is configured.".into())
 }
 
 fn discover_kt_files(dir: &Path) -> Vec<PathBuf> {
@@ -377,4 +378,56 @@ fn discover_kt_files(dir: &Path) -> Vec<PathBuf> {
         }
     }
     kt_files
+}
+
+fn build_javascript_bundle(project: &Path, target: &str) -> Result<(), Box<dyn std::error::Error>> {
+    crate::compiler::compile_javascript(project)?;
+    let config = crate::config::DevServerConfig::new(project.to_path_buf(), "127.0.0.1".parse()?, 8080, false)?;
+    let bundle = crate::bundler::build_bundle(&config, &Arc::new(AppRuntime::new()))?;
+    // Source dependencies and development deltas are not release artifacts.
+    let mut release = bundle.manifest.clone();
+    release.dependencies.clear();
+    release.delta.changed.clear();
+    release.delta.removed.clear();
+    release.signature = None;
+    let key = ring::signature::Ed25519KeyPair::from_pkcs8(&fs::read(config.project_path.join(".feather/private_key.der"))?)
+        .map_err(|_| "Invalid signing key")?;
+    let bytes = serde_json::to_vec(&serde_json::to_value(&release)?)?;
+    use base64::Engine as _;
+    release.signature = Some(base64::engine::general_purpose::STANDARD.encode(key.sign(&bytes).as_ref()));
+    let manifest = serde_json::to_vec_pretty(&release)?;
+    let id = feather_core::artifact_for("manifest.json", &manifest).sha256;
+    let destination = project.join("dist").join(target).join("bundles").join(&id);
+    let parent = destination.parent().unwrap();
+    fs::create_dir_all(parent)?;
+    let stage = parent.join(format!(".staging-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
+    fs::create_dir(&stage)?;
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let mut artifacts = vec![&bundle.manifest.render];
+        artifacts.extend(bundle.manifest.javascript.iter());
+        artifacts.extend(bundle.manifest.assets.iter());
+        artifacts.extend(bundle.manifest.fonts.iter());
+        for artifact in artifacts {
+            let path = Path::new(&artifact.path);
+            if path.components().any(|part| !matches!(part, std::path::Component::Normal(_))) {
+                return Err("Invalid artifact path in bundle".into());
+            }
+            let bytes = fs::read(config.bundle_path.join(path))?;
+            if feather_core::artifact_for(&artifact.path, &bytes).sha256 != artifact.sha256
+                || bytes.len() as u64 != artifact.bytes {
+                return Err("Artifact changed while packaging; retry the build".into());
+            }
+            let output = stage.join(path);
+            fs::create_dir_all(output.parent().unwrap())?;
+            fs::write(output, bytes)?;
+        }
+        fs::write(stage.join("manifest.json"), &manifest)?;
+        if destination.exists() { fs::remove_dir_all(&stage)?; }
+        else { fs::rename(&stage, &destination)?; }
+        println!("Experimental signed Kotlin/JS bundle: {}", destination.display());
+        println!("This is a runtime bundle, not an APK or IPA. Native host integration and device validation are still required.");
+        Ok(())
+    })();
+    if stage.exists() { let _ = fs::remove_dir_all(stage); }
+    result
 }

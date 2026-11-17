@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct FeatherManifest {
+    pub runtime: Option<String>,
     pub entry: String,
     pub assets: Option<Vec<String>>,
     #[serde(rename = "generatedIr")]

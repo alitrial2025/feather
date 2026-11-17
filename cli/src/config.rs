@@ -47,6 +47,7 @@ impl DevServerConfig {
             println!("   Using internal .feather cache; no project config was written.");
 
             FeatherManifest {
+                runtime: None,
                 entry: relative_entry,
                 assets: Some(auto_detect_assets(&project_path)),
                 generated_ir: None,
@@ -61,6 +62,9 @@ impl DevServerConfig {
             }
         };
 
+        if !matches!(manifest.runtime.as_deref(), None | Some("kotlin-js")) {
+            return Err("Unsupported runtime; supported experimental runtime: kotlin-js".into());
+        }
         let entry_path = project_path.join(&manifest.entry);
         if !entry_path.exists() {
             return Err(format!(

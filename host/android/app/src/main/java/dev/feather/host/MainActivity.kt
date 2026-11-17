@@ -17,6 +17,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.WebSocket
@@ -42,6 +47,8 @@ class MainActivity : ComponentActivity() {
     private val moduleRegistry = ModuleRegistry()
     private var devSocket: WebSocket? = null
     private val runtime = AppRuntime()
+    private val bundleFetchMutex = Mutex()
+    private val coreScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var currentJsonMessage: JSONObject? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,10 +167,29 @@ class MainActivity : ComponentActivity() {
         return try {
             val assets = applicationContext.assets
             
+            // A packaged JavaScript app must authenticate before any code executes.
+            val javascript = runCatching { assets.open("feather/app.js").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
+            if (javascript != null) {
+                try {
+                    val manifest = assets.open("feather/manifest.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    runtime.loadSignedJavascript(manifest, javascript, getString(R.string.feather_bundle_public_key).trim())
+                    val document = runtime.renderJavascriptDocument()
+                    currentJsonMessage = JSONObject(document)
+                    val (root, errors) = parseRenderMessage(document, moduleRegistry)
+                    rootNode = root
+                    diagnosticErrors = errors
+                } catch (error: Exception) {
+                    rootNode = FeatherNode.TextNode("Bundle verification or startup failed")
+                    diagnosticErrors = listOf(error.message ?: "JavaScript bundle rejected")
+                }
+                // Never fall back to an unsigned layout after rejecting signed code.
+                return true
+            }
+
             // 1. Try WASM logic
             runCatching {
                 val wasmBytes = assets.open("feather/app.wasm").readBytes()
-                runtime.loadWasm(wasmBytes.toList())
+                runtime.loadWasm(wasmBytes)
             }
 
             // 2. Try FlatBuffers (zero-copy) first
@@ -225,6 +251,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        coreScope.cancel()
+        devSocket?.close(1000, "Activity destroyed")
         super.onDestroy()
         moduleRegistry.onDestroy()
     }
@@ -244,12 +272,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startCorePolling() {
-        CoroutineScope(Dispatchers.Main).launch {
+        coreScope.launch {
             while (true) {
                 if (runtime.pollRenderNeeded()) {
                     drainModuleCalls()
                     
-                    if (runtime.hasWasm()) {
+                    if (runtime.hasJavascript()) {
+                        runCatching { withContext(Dispatchers.Default) { runtime.renderJavascriptDocument() } }.onSuccess { document ->
+                            currentJsonMessage = JSONObject(document)
+                            val (root, errors) = parseRenderMessage(document, moduleRegistry)
+                            rootNode = root
+                            diagnosticErrors = errors
+                        }.onFailure { error -> diagnosticErrors = listOf(error.message ?: "Kotlin runtime error") }
+                    } else if (runtime.hasWasm()) {
                         val renderTree = runtime.renderWasm()
                         if (renderTree != null) {
                             if (renderTree.startsWith("base64:")) {
@@ -303,7 +338,17 @@ class MainActivity : ComponentActivity() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 CoroutineScope(Dispatchers.Main).launch {
                     val json = runCatching { JSONObject(text) }.getOrNull()
-                    if (json?.optString("type") == "module_call") {
+                    val type = json?.optString("type")
+                    if (type == "hot-reload-js") {
+                        fetchBundleRender()
+                    } else if (type == "devtools_state_update") {
+                        runtime.setState(json!!.getString("key"), json.get("value").toString())
+                    } else if (runtime.hasJavascript() && type in listOf("render", "patch", "state_update", "module_call")) {
+                        // The device owns its app state; server renders are previews.
+                    } else if (runtime.hasJavascript() && type == "render_error") {
+                        val diagnostics = json?.optJSONArray("diagnostics")
+                        diagnosticErrors = (0 until (diagnostics?.length() ?: 0)).map { diagnostics!!.getJSONObject(it).optString("message") }
+                    } else if (type == "module_call") {
                         runtime.applyActionEvent(text)
                     } else if (json?.optString("type") == "state_update") {
                         val key = json.getString("key")
@@ -352,14 +397,15 @@ class MainActivity : ComponentActivity() {
                 }
             }.onSuccess { bytes ->
                 if (bytes != null) {
-                    runtime.hotReloadWasm(bytes.toList())
+                    runtime.hotReloadWasm(bytes)
                 }
             }
         }
     }
 
     private fun fetchBundleRender() {
-        CoroutineScope(Dispatchers.IO).launch {
+        coreScope.launch(Dispatchers.IO) {
+            bundleFetchMutex.withLock {
             var missingModules: List<String> = emptyList()
             var renderPayload: String? = null
             
@@ -374,7 +420,7 @@ class MainActivity : ComponentActivity() {
 
                 // ─── Feature 1: Cryptographic Bundle Verification & Code Signing ───
                 val signature = manifest.optString("signature", "")
-                val hostPublicKeyB64 = "MCowBQYDK2VwAyEAi43tq2sB7k4n1xT3M8vR2fG0wW6eW+0v4eN9gDqK4sQ=" // Replace with your public key from .feather/public_key.txt
+                val hostPublicKeyB64 = getString(R.string.feather_bundle_public_key).trim()
                 
                 if (signature.isEmpty() || !uniffi.feather_core.verifyManifestSignature(manifestPayload, signature, hostPublicKeyB64)) {
                     throw SecurityException("CRYPTOGRAPHIC SECURE BOOT FAULT")
@@ -401,13 +447,32 @@ class MainActivity : ComponentActivity() {
                 }
                 missingModules = runtime.checkRequirements(requiredModules, "android")
 
+                if (manifest.optString("runtime") == "kotlin-js") {
+                    val artifact = manifest.getJSONObject("javascript")
+                    require(artifact.getString("path") == "app.js") { "Invalid JavaScript artifact path" }
+                    val request = Request.Builder().url("$devServerBaseUrl/bundle/artifact/app.js").build()
+                    val source = client.newCall(request).execute().use { response ->
+                        check(response.isSuccessful) { "JavaScript download failed: ${response.code}" }
+                        response.body?.string() ?: error("Empty JavaScript response")
+                    }
+                    runtime.loadSignedJavascript(manifestPayload, source, hostPublicKeyB64)
+                    val document = runtime.renderJavascriptDocument()
+                    coreScope.launch {
+                        currentJsonMessage = JSONObject(document)
+                        val (root, errors) = parseRenderMessage(document, moduleRegistry)
+                        rootNode = root
+                        diagnosticErrors = errors + missingModules
+                    }
+                    return@runCatching
+                }
+
                 // Fetch WASM if present (prefer compressed)
                 val wasmArtifact = manifest.optJSONObject("wasm")
                 if (wasmArtifact != null) {
                     val wasmPath = wasmArtifact.getString("path")
                     val wasmBytes = tryFetchCompressed("$devServerBaseUrl/bundle/artifact/$wasmPath")
                     if (wasmBytes != null) {
-                        runtime.loadWasm(wasmBytes.toList())
+                        runtime.loadWasm(wasmBytes)
                     }
                 }
 
@@ -461,7 +526,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }.onFailure { error ->
-                CoroutineScope(Dispatchers.Main).launch {
+                coreScope.launch {
+                    if (runtime.hasJavascript()) {
+                        diagnosticErrors = listOf(error.message ?: "JavaScript update rejected")
+                        return@launch
+                    }
                     if (error is SecurityException && error.message == "CRYPTOGRAPHIC SECURE BOOT FAULT") {
                         rootNode = FeatherNode.TextNode("CRYPTOGRAPHIC SECURE BOOT FAULT")
                         diagnosticErrors = listOf(
@@ -474,6 +543,7 @@ class MainActivity : ComponentActivity() {
                         diagnosticErrors = listOf(error.message ?: "Unknown error")
                     }
                 }
+            }
             }
         }
     }
@@ -511,8 +581,12 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val fullEvent = event.put("type", "action")
-        devSocket?.send(fullEvent.toString())
+        if (runtime.hasJavascript()) {
+            devSocket?.send(JSONObject().put("type", "runtime_state").put("state", JSONObject(runtime.getAllState())).toString())
+        } else {
+            val fullEvent = event.put("type", "action")
+            devSocket?.send(fullEvent.toString())
+        }
     }
 
     private fun handleHostAction(action: String) {
@@ -558,8 +632,8 @@ class MainActivity : ComponentActivity() {
         // moduleRegistry.register(MapsModule())
         // moduleRegistry.register(PaymentsModule())
         moduleRegistry.register(ReflectionModule())
-        moduleRegistry.register(dev.feather.modules.camera.CameraModuleAndroid())
-        moduleRegistry.register(dev.feather.modules.maps.MapsModuleAndroid())
+        // Sample camera/maps plugins are opt-in native dependencies, discovered
+        // through PluginLoader when included in a host build.
 
         // Load and register third-party plugins dynamically
         try {
@@ -582,8 +656,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendStateAssignment(key: String, value: String) {
-        val escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
-        sendAction("$key=\"$escaped\"", null)
+        if (key.isEmpty()) return
+        runtime.setState(key, value)
+        val typed = runCatching { org.json.JSONTokener(value).nextValue() }.getOrElse { value }
+        devSocket?.send(JSONObject().put("type", "state_update").put("key", key).put("value", typed).toString())
     }
 
     // ─── Incremental Tree Diffing / Patch Mutations (Feature 3) ───

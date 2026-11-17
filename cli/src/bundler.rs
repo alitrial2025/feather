@@ -1,3 +1,4 @@
+use ring::signature::KeyPair;
 use crate::config::DevServerConfig;
 use crate::constants::{ASSET_EXTENSIONS, FEATHER_SDK_VERSION};
 use crate::models::{Diagnostic, RenderMessage, WidgetNode};
@@ -20,6 +21,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub fn render_document(config: &DevServerConfig, runtime: &Arc<AppRuntime>) -> String {
+    if config.manifest.runtime.as_deref() == Some("kotlin-js") {
+        return javascript_document(config, runtime).unwrap_or_else(|error| serde_json::json!({
+            "type": "render_error", "protocol_version": 1,
+            "root": {"type": "Text", "text": "Kotlin runtime error"},
+            "diagnostics": [{"level": "error", "message": error}]
+        }).to_string());
+    }
     // Try WASM execution first — if a compiled .wasm exists, use it
     let wasm_path = config.project_path.join(".feather").join("app.wasm");
     if wasm_path.exists() {
@@ -200,10 +208,15 @@ pub fn build_bundle(
         key_pair
     };
 
+    let javascript = if config.manifest.runtime.as_deref() == Some("kotlin-js") {
+        let bytes = fs::read(config.project_path.join(".feather/app.js")).map_err(|error| error.to_string())?;
+        write_if_changed(&config.bundle_path.join("app.js"), &bytes).map_err(|error| error.to_string())?;
+        Some(artifact_for("app.js", &bytes))
+    } else { None };
     let render_artifact = artifact_for("app.feather.json", render_payload.as_bytes());
     let dependencies = discover_dependencies(config)?;
     let assets = copy_assets(config)?;
-    let wasm = copy_wasm_artifact(config)?;
+    let wasm = if config.manifest.runtime.as_deref() == Some("kotlin-js") { None } else { copy_wasm_artifact(config)? };
     let modules = discover_modules(&render_payload);
     let previous_manifest = read_previous_manifest(&config.bundle_path.join("manifest.json"));
     let manifest = BundleManifest {
@@ -217,6 +230,8 @@ pub fn build_bundle(
         sdk_version: FEATHER_SDK_VERSION.to_string(),
         protocol_version: 1,
         render: render_artifact,
+        runtime: config.manifest.runtime.clone(),
+        javascript,
         wasm,
         assets,
         fonts: Vec::new(),
@@ -417,6 +432,9 @@ fn load_render_payload(
     config: &DevServerConfig,
     runtime: &Arc<AppRuntime>,
 ) -> Result<String, String> {
+    if config.manifest.runtime.as_deref() == Some("kotlin-js") {
+        return javascript_document(config, runtime);
+    }
     if let Some(render_payload) = read_render_payload(&config.generated_ir_path, runtime) {
         return Ok(render_payload);
     }
@@ -451,4 +469,36 @@ fn read_render_payload(path: &Option<PathBuf>, runtime: &Arc<AppRuntime>) -> Opt
     }
     
     serde_json::to_string(&value).ok()
+}
+
+#[cfg(test)]
+mod signing_tests {
+    use super::*;
+
+    #[test]
+    fn generated_bundle_verifies_and_tampering_fails() {
+        let dir = std::env::temp_dir().join(format!("feather-signing-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&dir).unwrap();
+        (|| {
+            fs::write(dir.join("feather.json"), r#"{"entry":"app.fthr"}"#).unwrap();
+            fs::write(dir.join("app.fthr"), "Text(\"Signed bundle\")").unwrap();
+            let config = DevServerConfig::new(dir.clone(), "127.0.0.1".parse().unwrap(), 8080, false).unwrap();
+            let runtime = Arc::new(AppRuntime::default());
+            let bundle = build_bundle(&config, &runtime).unwrap();
+            let mut manifest = serde_json::to_value(&bundle.manifest).unwrap();
+            let signature = bundle.manifest.signature.unwrap();
+            let key = fs::read_to_string(dir.join(".feather/public_key.txt")).unwrap();
+            assert!(feather_core::verify_manifest_signature(manifest.to_string(), signature.clone(), key.clone()));
+            manifest["render"]["sha256"] = serde_json::json!("tampered");
+            assert!(!feather_core::verify_manifest_signature(manifest.to_string(), signature, key));
+        })();
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+fn javascript_document(config: &DevServerConfig, runtime: &Arc<AppRuntime>) -> Result<String, String> {
+    let source = fs::read_to_string(config.project_path.join(".feather/app.js"))
+        .map_err(|error| format!("Run feather-cli compile-js first: {error}"))?;
+    runtime.load_javascript(source).map_err(|error| error.to_string())?;
+    runtime.render_javascript_document().map_err(|error| error.to_string())
 }

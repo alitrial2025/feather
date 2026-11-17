@@ -1,5 +1,10 @@
 # Feather 🪶
 
+> Experimental: the Rust workflow and an opt-in Kotlin/JS compiler/runtime
+> slice are tested. Mobile production delivery is not release-ready. See the
+> [production readiness review](docs/production-readiness.md) for verified behavior
+> and remaining release gates.
+
 **Feather** is a next-generation high-performance native delivery platform for Kotlin Multiplatform (KMP). It enables developers to build truly native apps with Kotlin that are delivered dynamically to host shells on Android and iOS with near-instant hot-reloads, stateful fast refresh, and zero-copy binary performance.
 
 ---
@@ -79,6 +84,14 @@ feather/
 ```
 
 ---
+
+## Experimental Kotlin application runtime
+
+The [Kotlin/JS runtime guide](docs/kotlin-js-runtime.md) includes a real compiled counter, code refresh, tests, and signed experimental bundles. Select `runtime: "kotlin-js"` in `feather.json`. The native host integration now builds an ARM64 Android debug APK; device execution and iOS build verification remain release gates. [Windows/WSL2 instructions](docs/windows-development.md) cover building and connecting the persistent host.
+
+## Platform delivery plan
+
+See [the detailed platform plan](docs/platform-plan.md) for the no-rebuild development contract, architecture decisions, application capability packs, and production acceptance gates.
 
 ## 🚀 Getting Started
 

@@ -643,9 +643,12 @@ internal interface UniffiCallbackInterfaceNativeModuleMethod0 : com.sun.jna.Call
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceNativeModuleMethod1 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceNativeModuleMethod2 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceNativeModuleMethod3 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`callback`: Pointer,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 @Structure.FieldOrder("onSuccess", "onError", "uniffiFree")
@@ -667,28 +670,51 @@ internal open class UniffiVTableCallbackInterfaceNativeCallback(
     }
 
 }
-@Structure.FieldOrder("getInfo", "callSync", "callAsync", "uniffiFree")
+@Structure.FieldOrder("getInfo", "getWidgets", "callSync", "callAsync", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceNativeModule(
     @JvmField internal var `getInfo`: UniffiCallbackInterfaceNativeModuleMethod0? = null,
-    @JvmField internal var `callSync`: UniffiCallbackInterfaceNativeModuleMethod1? = null,
-    @JvmField internal var `callAsync`: UniffiCallbackInterfaceNativeModuleMethod2? = null,
+    @JvmField internal var `getWidgets`: UniffiCallbackInterfaceNativeModuleMethod1? = null,
+    @JvmField internal var `callSync`: UniffiCallbackInterfaceNativeModuleMethod2? = null,
+    @JvmField internal var `callAsync`: UniffiCallbackInterfaceNativeModuleMethod3? = null,
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
 ) : Structure() {
     class UniffiByValue(
         `getInfo`: UniffiCallbackInterfaceNativeModuleMethod0? = null,
-        `callSync`: UniffiCallbackInterfaceNativeModuleMethod1? = null,
-        `callAsync`: UniffiCallbackInterfaceNativeModuleMethod2? = null,
+        `getWidgets`: UniffiCallbackInterfaceNativeModuleMethod1? = null,
+        `callSync`: UniffiCallbackInterfaceNativeModuleMethod2? = null,
+        `callAsync`: UniffiCallbackInterfaceNativeModuleMethod3? = null,
         `uniffiFree`: UniffiCallbackInterfaceFree? = null,
-    ): UniffiVTableCallbackInterfaceNativeModule(`getInfo`,`callSync`,`callAsync`,`uniffiFree`,), Structure.ByValue
+    ): UniffiVTableCallbackInterfaceNativeModule(`getInfo`,`getWidgets`,`callSync`,`callAsync`,`uniffiFree`,), Structure.ByValue
 
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceNativeModule) {
         `getInfo` = other.`getInfo`
+        `getWidgets` = other.`getWidgets`
         `callSync` = other.`callSync`
         `callAsync` = other.`callAsync`
         `uniffiFree` = other.`uniffiFree`
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -835,104 +861,124 @@ internal interface UniffiLib : Library {
                 uniffiCallbackInterfaceNativeModule.register(lib)
                 }
         }
-        
+
         // The Cleaner for the whole library
         internal val CLEANER: UniffiCleaner by lazy {
             UniffiCleaner.create()
         }
     }
 
-    fun uniffi_feather_core_fn_clone_appruntime(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_clone_appruntime(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Pointer
-    fun uniffi_feather_core_fn_free_appruntime(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_free_appruntime(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_constructor_appruntime_new(uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_constructor_appruntime_new(uniffi_out_err: UniffiRustCallStatus,
     ): Pointer
-    fun uniffi_feather_core_fn_method_appruntime_apply_action_event(`ptr`: Pointer,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_apply_action_event(`ptr`: Pointer,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_check_requirements(`ptr`: Pointer,`requiredModules`: RustBuffer.ByValue,`hostPlatform`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_check_requirements(`ptr`: Pointer,`requiredModules`: RustBuffer.ByValue,`hostPlatform`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_deliver_module_error(`ptr`: Pointer,`callbackId`: RustBuffer.ByValue,`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_deliver_module_error(`ptr`: Pointer,`callbackId`: RustBuffer.ByValue,`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_deliver_module_result(`ptr`: Pointer,`callbackId`: RustBuffer.ByValue,`resultJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_deliver_module_result(`ptr`: Pointer,`callbackId`: RustBuffer.ByValue,`resultJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_drain_console_logs(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_drain_console_logs(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_drain_diagnostics(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_drain_diagnostics(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_drain_module_calls(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_drain_module_calls(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_get_all_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_drain_native_events(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_get_registered_modules(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_get_all_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_get_state(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_get_registered_modules(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_has_wasm(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_get_state(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_appruntime_has_javascript(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
-    fun uniffi_feather_core_fn_method_appruntime_hot_reload_wasm(`ptr`: Pointer,`wasmBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_load_wasm(`ptr`: Pointer,`wasmBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_poll_render_needed(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_has_wasm(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
-    fun uniffi_feather_core_fn_method_appruntime_register_module(`ptr`: Pointer,`name`: RustBuffer.ByValue,`module`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_hot_reload_wasm(`ptr`: Pointer,`wasmBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_render_wasm(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_report_diagnostic(`ptr`: Pointer,`level`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_load_javascript(`ptr`: Pointer,`source`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_resolve_state_text_nodes(`ptr`: Pointer,`jsonPayload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_set_state(`ptr`: Pointer,`key`: RustBuffer.ByValue,`jsonValue`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_load_signed_javascript(`ptr`: Pointer,`manifestJson`: RustBuffer.ByValue,`source`: RustBuffer.ByValue,`publicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_appruntime_state_bool(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_load_wasm(`ptr`: Pointer,`wasmBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    fun uniffi_feather_core_fn_method_appruntime_poll_render_needed(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
-    fun uniffi_feather_core_fn_method_appruntime_state_list(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_appruntime_state_value(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_clone_engine(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): Pointer
-    fun uniffi_feather_core_fn_free_engine(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_push_native_event(`ptr`: Pointer,`name`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_constructor_engine_new(uniffi_out_err: UniffiRustCallStatus, 
-    ): Pointer
-    fun uniffi_feather_core_fn_method_engine_get_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_engine_start(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_register_module(`ptr`: Pointer,`name`: RustBuffer.ByValue,`module`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_clone_nativecallback(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_appruntime_render_javascript(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_appruntime_render_javascript_document(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_appruntime_render_wasm(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_appruntime_report_diagnostic(`ptr`: Pointer,`level`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    fun uniffi_feather_core_fn_method_appruntime_resolve_state_text_nodes(`ptr`: Pointer,`jsonPayload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_appruntime_set_state(`ptr`: Pointer,`key`: RustBuffer.ByValue,`jsonValue`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    fun uniffi_feather_core_fn_method_appruntime_state_bool(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    fun uniffi_feather_core_fn_method_appruntime_state_list(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_appruntime_state_value(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_clone_engine(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Pointer
-    fun uniffi_feather_core_fn_free_nativecallback(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_free_engine(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    fun uniffi_feather_core_fn_constructor_engine_new(uniffi_out_err: UniffiRustCallStatus,
+    ): Pointer
+    fun uniffi_feather_core_fn_method_engine_get_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_engine_start(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    fun uniffi_feather_core_fn_clone_nativecallback(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+    ): Pointer
+    fun uniffi_feather_core_fn_free_nativecallback(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     fun uniffi_feather_core_fn_init_callback_vtable_nativecallback(`vtable`: UniffiVTableCallbackInterfaceNativeCallback,
     ): Unit
-    fun uniffi_feather_core_fn_method_nativecallback_on_success(`ptr`: Pointer,`result`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_nativecallback_on_success(`ptr`: Pointer,`result`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_method_nativecallback_on_error(`ptr`: Pointer,`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_nativecallback_on_error(`ptr`: Pointer,`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_clone_nativemodule(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_clone_nativemodule(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Pointer
-    fun uniffi_feather_core_fn_free_nativemodule(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_free_nativemodule(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     fun uniffi_feather_core_fn_init_callback_vtable_nativemodule(`vtable`: UniffiVTableCallbackInterfaceNativeModule,
     ): Unit
-    fun uniffi_feather_core_fn_method_nativemodule_get_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_nativemodule_get_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_nativemodule_call_sync(`ptr`: Pointer,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_nativemodule_get_widgets(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun uniffi_feather_core_fn_method_nativemodule_call_async(`ptr`: Pointer,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`callback`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_method_nativemodule_call_sync(`ptr`: Pointer,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_feather_core_fn_method_nativemodule_call_async(`ptr`: Pointer,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`callback`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_feather_core_fn_func_get_greeting(uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_func_diff_layouts(`oldJson`: RustBuffer.ByValue,`newJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun ffi_feather_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_func_get_greeting(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun ffi_feather_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_feather_core_fn_func_verify_manifest_signature(`manifestJson`: RustBuffer.ByValue,`signatureB64`: RustBuffer.ByValue,`publicKeyB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    fun ffi_feather_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
-    fun ffi_feather_core_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun ffi_feather_core_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun ffi_feather_core_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun ffi_feather_core_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -940,7 +986,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_u8(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
     fun ffi_feather_core_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -948,7 +994,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_i8(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
     fun ffi_feather_core_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -956,7 +1002,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_u16(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Short
     fun ffi_feather_core_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -964,7 +1010,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_i16(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Short
     fun ffi_feather_core_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -972,7 +1018,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_u32(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Int
     fun ffi_feather_core_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -980,7 +1026,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_i32(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Int
     fun ffi_feather_core_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -988,7 +1034,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_u64(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     fun ffi_feather_core_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -996,7 +1042,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_i64(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     fun ffi_feather_core_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -1004,7 +1050,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_f32(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Float
     fun ffi_feather_core_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -1012,7 +1058,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_f64(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Double
     fun ffi_feather_core_rust_future_poll_pointer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -1020,7 +1066,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_pointer(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_pointer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_pointer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Pointer
     fun ffi_feather_core_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -1028,7 +1074,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_rust_buffer(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun ffi_feather_core_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
@@ -1036,9 +1082,13 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_feather_core_rust_future_free_void(`handle`: Long,
     ): Unit
-    fun ffi_feather_core_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    fun ffi_feather_core_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    fun uniffi_feather_core_checksum_func_diff_layouts(
+    ): Short
     fun uniffi_feather_core_checksum_func_get_greeting(
+    ): Short
+    fun uniffi_feather_core_checksum_func_verify_manifest_signature(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_apply_action_event(
     ): Short
@@ -1054,21 +1104,35 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_drain_module_calls(
     ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_drain_native_events(
+    ): Short
     fun uniffi_feather_core_checksum_method_appruntime_get_all_state(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_get_registered_modules(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_get_state(
     ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_has_javascript(
+    ): Short
     fun uniffi_feather_core_checksum_method_appruntime_has_wasm(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_hot_reload_wasm(
+    ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_load_javascript(
+    ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_load_signed_javascript(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_load_wasm(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_poll_render_needed(
     ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_push_native_event(
+    ): Short
     fun uniffi_feather_core_checksum_method_appruntime_register_module(
+    ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_render_javascript(
+    ): Short
+    fun uniffi_feather_core_checksum_method_appruntime_render_javascript_document(
     ): Short
     fun uniffi_feather_core_checksum_method_appruntime_render_wasm(
     ): Short
@@ -1094,6 +1158,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_feather_core_checksum_method_nativemodule_get_info(
     ): Short
+    fun uniffi_feather_core_checksum_method_nativemodule_get_widgets(
+    ): Short
     fun uniffi_feather_core_checksum_method_nativemodule_call_sync(
     ): Short
     fun uniffi_feather_core_checksum_method_nativemodule_call_async(
@@ -1104,7 +1170,7 @@ internal interface UniffiLib : Library {
     ): Short
     fun ffi_feather_core_uniffi_contract_version(
     ): Int
-    
+
 }
 
 private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
@@ -1119,73 +1185,100 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
+    if (lib.uniffi_feather_core_checksum_func_diff_layouts() != 42186.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_feather_core_checksum_func_get_greeting() != 21733.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_apply_action_event() != 43878.toShort()) {
+    if (lib.uniffi_feather_core_checksum_func_verify_manifest_signature() != 24158.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_check_requirements() != 1886.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_apply_action_event() != 40193.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_deliver_module_error() != 19207.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_check_requirements() != 14057.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_deliver_module_result() != 15096.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_deliver_module_error() != 18841.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_console_logs() != 5568.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_deliver_module_result() != 16115.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_diagnostics() != 30556.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_console_logs() != 19444.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_module_calls() != 57839.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_diagnostics() != 62596.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_get_all_state() != 34791.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_module_calls() != 27935.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_get_registered_modules() != 20228.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_drain_native_events() != 22419.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_get_state() != 50549.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_get_all_state() != 7081.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_has_wasm() != 1659.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_get_registered_modules() != 52328.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_hot_reload_wasm() != 30783.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_get_state() != 10218.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_load_wasm() != 56826.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_has_javascript() != 10888.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_poll_render_needed() != 23165.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_has_wasm() != 37988.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_register_module() != 32953.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_hot_reload_wasm() != 50680.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_render_wasm() != 15948.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_load_javascript() != 18466.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_report_diagnostic() != 1264.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_load_signed_javascript() != 59115.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_resolve_state_text_nodes() != 53454.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_load_wasm() != 29232.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_set_state() != 16513.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_poll_render_needed() != 39752.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_state_bool() != 48881.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_push_native_event() != 18375.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_state_list() != 40138.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_register_module() != 44923.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_appruntime_state_value() != 30581.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_appruntime_render_javascript() != 55543.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_render_javascript_document() != 48091.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_render_wasm() != 46381.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_report_diagnostic() != 13252.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_resolve_state_text_nodes() != 42467.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_set_state() != 41382.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_state_bool() != 4754.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_state_list() != 36205.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_appruntime_state_value() != 28920.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_feather_core_checksum_method_engine_get_state() != 32356.toShort()) {
@@ -1203,10 +1296,13 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_feather_core_checksum_method_nativemodule_get_info() != 34046.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_nativemodule_call_sync() != 55922.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_nativemodule_get_widgets() != 46543.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_feather_core_checksum_method_nativemodule_call_async() != 17737.toShort()) {
+    if (lib.uniffi_feather_core_checksum_method_nativemodule_call_sync() != 38383.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_feather_core_checksum_method_nativemodule_call_async() != 792.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_feather_core_checksum_constructor_appruntime_new() != 3915.toShort()) {
@@ -1254,6 +1350,26 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
 
 /** Used to instantiate an interface without an actual pointer, for fakes in tests, mostly. */
 object NoPointer
+
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
+
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
+
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
+
+    override fun allocationSize(value: UInt) = 4UL
+
+    override fun write(value: UInt, buf: ByteBuffer) {
+        buf.putInt(value.toInt())
+    }
+}
 
 public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
     override fun lift(value: Byte): Boolean {
@@ -1504,121 +1620,69 @@ private class JavaLangRefCleanable(
     override fun clean() = cleanable.clean()
 }
 public interface AppRuntimeInterface {
-    
-    /**
-     * Process an action event from the host and update typed state.
-     */
+
     fun `applyActionEvent`(`payload`: kotlin.String)
-    
-    /**
-     * Checks a list of required modules against registered modules.
-     * Returns a list of missing module names/errors and reports them as diagnostics.
-     */
+
     fun `checkRequirements`(`requiredModules`: List<BundleModule>, `hostPlatform`: kotlin.String): List<kotlin.String>
-    
-    /**
-     * Deliver an async native module error back into the runtime.
-     */
+
     fun `deliverModuleError`(`callbackId`: kotlin.String, `error`: kotlin.String)
-    
-    /**
-     * Deliver an async native module result back into the runtime.
-     * Called by the native shell when a module callback completes (e.g., Camera returns a URI).
-     */
+
     fun `deliverModuleResult`(`callbackId`: kotlin.String, `resultJson`: kotlin.String)
-    
-    /**
-     * Drain and return all console log messages buffered since the last call.
-     * Used by native shells to display Kotlin errors in a diagnostics overlay.
-     */
+
     fun `drainConsoleLogs`(): List<kotlin.String>
-    
-    /**
-     * Drain and return all diagnostics buffered since the last call.
-     */
+
     fun `drainDiagnostics`(): List<Diagnostic>
-    
-    /**
-     * Drain and return all pending module calls as JSON strings.
-     */
+
     fun `drainModuleCalls`(): List<kotlin.String>
-    
-    /**
-     * Get all state as JSON.
-     */
+
+    fun `drainNativeEvents`(): List<NativeEvent>
+
     fun `getAllState`(): kotlin.String
-    
-    /**
-     * Returns a list of all currently registered native modules.
-     */
+
     fun `getRegisteredModules`(): List<ModuleInfo>
-    
-    /**
-     * Get a state value as JSON string.
-     */
+
     fun `getState`(`key`: kotlin.String): kotlin.String?
-    
-    /**
-     * Check if a WASM engine is loaded.
-     */
+
+    fun `hasJavascript`(): kotlin.Boolean
+
     fun `hasWasm`(): kotlin.Boolean
-    
-    /**
-     * Hot-reload: Replace the running WASM module with a new binary
-     * without losing state. The state map is preserved across reloads.
-     */
+
     fun `hotReloadWasm`(`wasmBytes`: kotlin.ByteArray)
-    
+
+    fun `loadJavascript`(`source`: kotlin.String)
+
     /**
-     * Load and instantiate a WebAssembly module
+     * Load code only after the app-pinned key authenticates the manifest and
+     * the signed JavaScript artifact metadata matches the exact source bytes.
      */
+    fun `loadSignedJavascript`(`manifestJson`: kotlin.String, `source`: kotlin.String, `publicKey`: kotlin.String)
+
     fun `loadWasm`(`wasmBytes`: kotlin.ByteArray)
-    
-    /**
-     * Check if the UI needs a re-render.
-     */
+
     fun `pollRenderNeeded`(): kotlin.Boolean
-    
-    /**
-     * Register a native platform module (e.g. Camera, Network, DB)
-     */
+
+    fun `pushNativeEvent`(`name`: kotlin.String, `payload`: kotlin.String)
+
     fun `registerModule`(`name`: kotlin.String, `module`: NativeModule)
-    
-    /**
-     * Execute the WASM app's render_ui and return the JSON render tree.
-     */
+
+    fun `renderJavascript`(): kotlin.String
+
+    fun `renderJavascriptDocument`(): kotlin.String
+
     fun `renderWasm`(): kotlin.String?
-    
-    /**
-     * Report a new diagnostic message.
-     */
+
     fun `reportDiagnostic`(`level`: kotlin.String, `message`: kotlin.String)
-    
-    /**
-     * Resolve StateText and Condition nodes in the render payload.
-     */
+
     fun `resolveStateTextNodes`(`jsonPayload`: kotlin.String): kotlin.String
-    
-    /**
-     * Set a state value directly (for programmatic state updates).
-     */
+
     fun `setState`(`key`: kotlin.String, `jsonValue`: kotlin.String)
-    
-    /**
-     * Look up a state value as a boolean.
-     */
+
     fun `stateBool`(`key`: kotlin.String): kotlin.Boolean
-    
-    /**
-     * Look up a state value as a list (for ForEach).
-     */
+
     fun `stateList`(`key`: kotlin.String): List<kotlin.String>
-    
-    /**
-     * Look up a single state value as a display string.
-     */
+
     fun `stateValue`(`key`: kotlin.String): kotlin.String?
-    
+
     companion object
 }
 
@@ -1710,25 +1774,18 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
         }
     }
 
-    
-    /**
-     * Process an action event from the host and update typed state.
-     */override fun `applyActionEvent`(`payload`: kotlin.String)
-        = 
+    override fun `applyActionEvent`(`payload`: kotlin.String)
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_apply_action_event(
         it, FfiConverterString.lower(`payload`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Checks a list of required modules against registered modules.
-     * Returns a list of missing module names/errors and reports them as diagnostics.
-     */override fun `checkRequirements`(`requiredModules`: List<BundleModule>, `hostPlatform`: kotlin.String): List<kotlin.String> {
+
+
+    override fun `checkRequirements`(`requiredModules`: List<BundleModule>, `hostPlatform`: kotlin.String): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1738,42 +1795,31 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Deliver an async native module error back into the runtime.
-     */override fun `deliverModuleError`(`callbackId`: kotlin.String, `error`: kotlin.String)
-        = 
+
+    override fun `deliverModuleError`(`callbackId`: kotlin.String, `error`: kotlin.String)
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_deliver_module_error(
         it, FfiConverterString.lower(`callbackId`),FfiConverterString.lower(`error`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Deliver an async native module result back into the runtime.
-     * Called by the native shell when a module callback completes (e.g., Camera returns a URI).
-     */override fun `deliverModuleResult`(`callbackId`: kotlin.String, `resultJson`: kotlin.String)
-        = 
+
+
+    override fun `deliverModuleResult`(`callbackId`: kotlin.String, `resultJson`: kotlin.String)
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_deliver_module_result(
         it, FfiConverterString.lower(`callbackId`),FfiConverterString.lower(`resultJson`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Drain and return all console log messages buffered since the last call.
-     * Used by native shells to display Kotlin errors in a diagnostics overlay.
-     */override fun `drainConsoleLogs`(): List<kotlin.String> {
+
+
+    override fun `drainConsoleLogs`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1783,12 +1829,9 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Drain and return all diagnostics buffered since the last call.
-     */override fun `drainDiagnostics`(): List<Diagnostic> {
+
+    override fun `drainDiagnostics`(): List<Diagnostic> {
             return FfiConverterSequenceTypeDiagnostic.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1798,12 +1841,9 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Drain and return all pending module calls as JSON strings.
-     */override fun `drainModuleCalls`(): List<kotlin.String> {
+
+    override fun `drainModuleCalls`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1813,12 +1853,21 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Get all state as JSON.
-     */override fun `getAllState`(): kotlin.String {
+
+    override fun `drainNativeEvents`(): List<NativeEvent> {
+            return FfiConverterSequenceTypeNativeEvent.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_drain_native_events(
+        it, _status)
+}
+    }
+    )
+    }
+
+
+    override fun `getAllState`(): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1828,12 +1877,9 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Returns a list of all currently registered native modules.
-     */override fun `getRegisteredModules`(): List<ModuleInfo> {
+
+    override fun `getRegisteredModules`(): List<ModuleInfo> {
             return FfiConverterSequenceTypeModuleInfo.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1843,12 +1889,9 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Get a state value as JSON string.
-     */override fun `getState`(`key`: kotlin.String): kotlin.String? {
+
+    override fun `getState`(`key`: kotlin.String): kotlin.String? {
             return FfiConverterOptionalString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1858,12 +1901,21 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Check if a WASM engine is loaded.
-     */override fun `hasWasm`(): kotlin.Boolean {
+
+    override fun `hasJavascript`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_has_javascript(
+        it, _status)
+}
+    }
+    )
+    }
+
+
+    override fun `hasWasm`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1873,43 +1925,61 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Hot-reload: Replace the running WASM module with a new binary
-     * without losing state. The state map is preserved across reloads.
-     */
+
+
     @Throws(ModuleException::class)override fun `hotReloadWasm`(`wasmBytes`: kotlin.ByteArray)
-        = 
+        =
     callWithPointer {
     uniffiRustCallWithError(ModuleException) { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_hot_reload_wasm(
         it, FfiConverterByteArray.lower(`wasmBytes`),_status)
 }
     }
-    
-    
 
-    
+
+
+
+    @Throws(ModuleException::class)override fun `loadJavascript`(`source`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCallWithError(ModuleException) { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_load_javascript(
+        it, FfiConverterString.lower(`source`),_status)
+}
+    }
+
+
+
+
     /**
-     * Load and instantiate a WebAssembly module
+     * Load code only after the app-pinned key authenticates the manifest and
+     * the signed JavaScript artifact metadata matches the exact source bytes.
      */
+    @Throws(ModuleException::class)override fun `loadSignedJavascript`(`manifestJson`: kotlin.String, `source`: kotlin.String, `publicKey`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCallWithError(ModuleException) { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_load_signed_javascript(
+        it, FfiConverterString.lower(`manifestJson`),FfiConverterString.lower(`source`),FfiConverterString.lower(`publicKey`),_status)
+}
+    }
+
+
+
+
     @Throws(ModuleException::class)override fun `loadWasm`(`wasmBytes`: kotlin.ByteArray)
-        = 
+        =
     callWithPointer {
     uniffiRustCallWithError(ModuleException) { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_load_wasm(
         it, FfiConverterByteArray.lower(`wasmBytes`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Check if the UI needs a re-render.
-     */override fun `pollRenderNeeded`(): kotlin.Boolean {
+
+
+    override fun `pollRenderNeeded`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1919,26 +1989,57 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Register a native platform module (e.g. Camera, Network, DB)
-     */override fun `registerModule`(`name`: kotlin.String, `module`: NativeModule)
-        = 
+
+    override fun `pushNativeEvent`(`name`: kotlin.String, `payload`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_push_native_event(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`payload`),_status)
+}
+    }
+
+
+
+    override fun `registerModule`(`name`: kotlin.String, `module`: NativeModule)
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_register_module(
         it, FfiConverterString.lower(`name`),FfiConverterTypeNativeModule.lower(`module`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Execute the WASM app's render_ui and return the JSON render tree.
-     */override fun `renderWasm`(): kotlin.String? {
+
+
+
+    @Throws(ModuleException::class)override fun `renderJavascript`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(ModuleException) { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_render_javascript(
+        it, _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(ModuleException::class)override fun `renderJavascriptDocument`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(ModuleException) { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_render_javascript_document(
+        it, _status)
+}
+    }
+    )
+    }
+
+
+    override fun `renderWasm`(): kotlin.String? {
             return FfiConverterOptionalString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1948,26 +2049,20 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Report a new diagnostic message.
-     */override fun `reportDiagnostic`(`level`: kotlin.String, `message`: kotlin.String)
-        = 
+
+    override fun `reportDiagnostic`(`level`: kotlin.String, `message`: kotlin.String)
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_report_diagnostic(
         it, FfiConverterString.lower(`level`),FfiConverterString.lower(`message`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Resolve StateText and Condition nodes in the render payload.
-     */override fun `resolveStateTextNodes`(`jsonPayload`: kotlin.String): kotlin.String {
+
+
+    override fun `resolveStateTextNodes`(`jsonPayload`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -1977,26 +2072,20 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Set a state value directly (for programmatic state updates).
-     */override fun `setState`(`key`: kotlin.String, `jsonValue`: kotlin.String)
-        = 
+
+    override fun `setState`(`key`: kotlin.String, `jsonValue`: kotlin.String)
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_appruntime_set_state(
         it, FfiConverterString.lower(`key`),FfiConverterString.lower(`jsonValue`),_status)
 }
     }
-    
-    
 
-    
-    /**
-     * Look up a state value as a boolean.
-     */override fun `stateBool`(`key`: kotlin.String): kotlin.Boolean {
+
+
+    override fun `stateBool`(`key`: kotlin.String): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -2006,12 +2095,9 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Look up a state value as a list (for ForEach).
-     */override fun `stateList`(`key`: kotlin.String): List<kotlin.String> {
+
+    override fun `stateList`(`key`: kotlin.String): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -2021,12 +2107,9 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
-    /**
-     * Look up a single state value as a display string.
-     */override fun `stateValue`(`key`: kotlin.String): kotlin.String? {
+
+    override fun `stateValue`(`key`: kotlin.String): kotlin.String? {
             return FfiConverterOptionalString.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -2036,14 +2119,14 @@ open class AppRuntime: Disposable, AutoCloseable, AppRuntimeInterface {
     }
     )
     }
-    
 
-    
 
-    
-    
+
+
+
+
     companion object
-    
+
 }
 
 public object FfiConverterTypeAppRuntime: FfiConverter<AppRuntime, Pointer> {
@@ -2171,11 +2254,11 @@ public object FfiConverterTypeAppRuntime: FfiConverter<AppRuntime, Pointer> {
 
 
 public interface EngineInterface {
-    
+
     fun `getState`(): kotlin.String
-    
+
     fun `start`()
-    
+
     companion object
 }
 
@@ -2277,25 +2360,25 @@ open class Engine: Disposable, AutoCloseable, EngineInterface {
     }
     )
     }
-    
+
 
     override fun `start`()
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_engine_start(
         it, _status)
 }
     }
-    
-    
 
-    
 
-    
-    
+
+
+
+
+
     companion object
-    
+
 }
 
 public object FfiConverterTypeEngine: FfiConverter<Engine, Pointer> {
@@ -2423,11 +2506,11 @@ public object FfiConverterTypeEngine: FfiConverter<Engine, Pointer> {
 
 
 public interface NativeCallback {
-    
+
     fun `onSuccess`(`result`: kotlin.String)
-    
+
     fun `onError`(`error`: kotlin.String)
-    
+
     companion object
 }
 
@@ -2513,33 +2596,33 @@ open class NativeCallbackImpl: Disposable, AutoCloseable, NativeCallback {
     }
 
     override fun `onSuccess`(`result`: kotlin.String)
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_nativecallback_on_success(
         it, FfiConverterString.lower(`result`),_status)
 }
     }
-    
-    
+
+
 
     override fun `onError`(`error`: kotlin.String)
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_nativecallback_on_error(
         it, FfiConverterString.lower(`error`),_status)
 }
     }
-    
-    
 
-    
 
-    
-    
+
+
+
+
+
     companion object
-    
+
 }
 // Magic number for the Rust proxy to call using the same mechanism as every other method,
 // to free the callback once it's dropped by Rust.
@@ -2743,13 +2826,15 @@ public object FfiConverterTypeNativeCallback: FfiConverter<NativeCallback, Point
 
 
 public interface NativeModule {
-    
+
     fun `getInfo`(): ModuleInfo
-    
+
+    fun `getWidgets`(): List<kotlin.String>
+
     fun `callSync`(`action`: kotlin.String, `payload`: kotlin.String): kotlin.String
-    
+
     fun `callAsync`(`action`: kotlin.String, `payload`: kotlin.String, `callback`: NativeCallback)
-    
+
     companion object
 }
 
@@ -2844,9 +2929,21 @@ open class NativeModuleImpl: Disposable, AutoCloseable, NativeModule {
     }
     )
     }
-    
 
-    
+
+    override fun `getWidgets`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_method_nativemodule_get_widgets(
+        it, _status)
+}
+    }
+    )
+    }
+
+
+
     @Throws(ModuleException::class)override fun `callSync`(`action`: kotlin.String, `payload`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
@@ -2857,25 +2954,25 @@ open class NativeModuleImpl: Disposable, AutoCloseable, NativeModule {
     }
     )
     }
-    
+
 
     override fun `callAsync`(`action`: kotlin.String, `payload`: kotlin.String, `callback`: NativeCallback)
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_method_nativemodule_call_async(
         it, FfiConverterString.lower(`action`),FfiConverterString.lower(`payload`),FfiConverterTypeNativeCallback.lower(`callback`),_status)
 }
     }
-    
-    
 
-    
 
-    
-    
+
+
+
+
+
     companion object
-    
+
 }
 
 
@@ -2892,7 +2989,18 @@ internal object uniffiCallbackInterfaceNativeModule {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `callSync`: UniffiCallbackInterfaceNativeModuleMethod1 {
+    internal object `getWidgets`: UniffiCallbackInterfaceNativeModuleMethod1 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeNativeModule.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`getWidgets`(
+                )
+            }
+            val writeReturn = { value: List<kotlin.String> -> uniffiOutReturn.setValue(FfiConverterSequenceString.lower(value)) }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `callSync`: UniffiCallbackInterfaceNativeModuleMethod2 {
         override fun callback(`uniffiHandle`: Long,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeNativeModule.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2910,7 +3018,7 @@ internal object uniffiCallbackInterfaceNativeModule {
             )
         }
     }
-    internal object `callAsync`: UniffiCallbackInterfaceNativeModuleMethod2 {
+    internal object `callAsync`: UniffiCallbackInterfaceNativeModuleMethod3 {
         override fun callback(`uniffiHandle`: Long,`action`: RustBuffer.ByValue,`payload`: RustBuffer.ByValue,`callback`: Pointer,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeNativeModule.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2933,6 +3041,7 @@ internal object uniffiCallbackInterfaceNativeModule {
 
     internal var vtable = UniffiVTableCallbackInterfaceNativeModule.UniffiByValue(
         `getInfo`,
+        `getWidgets`,
         `callSync`,
         `callAsync`,
         uniffiFree,
@@ -2974,12 +3083,12 @@ public object FfiConverterTypeNativeModule: FfiConverter<NativeModule, Pointer> 
 
 
 data class BundleModule (
-    var `name`: kotlin.String, 
-    var `version`: kotlin.String, 
-    var `platforms`: List<kotlin.String>, 
+    var `name`: kotlin.String,
+    var `version`: kotlin.String,
+    var `platforms`: List<kotlin.String>,
     var `permissions`: List<kotlin.String>
 ) {
-    
+
     companion object
 }
 
@@ -3011,10 +3120,10 @@ public object FfiConverterTypeBundleModule: FfiConverterRustBuffer<BundleModule>
 
 
 data class Diagnostic (
-    var `level`: kotlin.String, 
+    var `level`: kotlin.String,
     var `message`: kotlin.String
 ) {
-    
+
     companion object
 }
 
@@ -3040,10 +3149,10 @@ public object FfiConverterTypeDiagnostic: FfiConverterRustBuffer<Diagnostic> {
 
 
 data class ModuleInfo (
-    var `name`: kotlin.String, 
+    var `name`: kotlin.String,
     var `version`: kotlin.String
 ) {
-    
+
     companion object
 }
 
@@ -3068,29 +3177,95 @@ public object FfiConverterTypeModuleInfo: FfiConverterRustBuffer<ModuleInfo> {
 
 
 
+data class NativeEvent (
+    var `name`: kotlin.String,
+    var `payload`: kotlin.String
+) {
+
+    companion object
+}
+
+public object FfiConverterTypeNativeEvent: FfiConverterRustBuffer<NativeEvent> {
+    override fun read(buf: ByteBuffer): NativeEvent {
+        return NativeEvent(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: NativeEvent) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`payload`)
+    )
+
+    override fun write(value: NativeEvent, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`payload`, buf)
+    }
+}
+
+
+
+data class UiPatch (
+    var `path`: List<kotlin.UInt>,
+    var `op`: kotlin.String,
+    var `property`: kotlin.String?,
+    var `value`: kotlin.String
+) {
+
+    companion object
+}
+
+public object FfiConverterTypeUiPatch: FfiConverterRustBuffer<UiPatch> {
+    override fun read(buf: ByteBuffer): UiPatch {
+        return UiPatch(
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: UiPatch) = (
+            FfiConverterSequenceUInt.allocationSize(value.`path`) +
+            FfiConverterString.allocationSize(value.`op`) +
+            FfiConverterOptionalString.allocationSize(value.`property`) +
+            FfiConverterString.allocationSize(value.`value`)
+    )
+
+    override fun write(value: UiPatch, buf: ByteBuffer) {
+            FfiConverterSequenceUInt.write(value.`path`, buf)
+            FfiConverterString.write(value.`op`, buf)
+            FfiConverterOptionalString.write(value.`property`, buf)
+            FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
 
 
 sealed class ModuleException: Exception() {
-    
+
     class ExecutionFailed(
-        
+
         val `errMsg`: kotlin.String
         ) : ModuleException() {
         override val message
             get() = "errMsg=${ `errMsg` }"
     }
-    
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<ModuleException> {
         override fun lift(error_buf: RustBuffer.ByValue): ModuleException = FfiConverterTypeModuleError.lift(error_buf)
     }
 
-    
+
 }
 
 public object FfiConverterTypeModuleError : FfiConverterRustBuffer<ModuleException> {
     override fun read(buf: ByteBuffer): ModuleException {
-        
+
 
         return when(buf.getInt()) {
             1 -> ModuleException.ExecutionFailed(
@@ -3147,6 +3322,31 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>> {
+    override fun read(buf: ByteBuffer): List<kotlin.UInt> {
+        val len = buf.getInt()
+        return List<kotlin.UInt>(len) {
+            FfiConverterUInt.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.UInt>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterUInt.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.UInt>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterUInt.write(it, buf)
         }
     }
 }
@@ -3249,7 +3449,66 @@ public object FfiConverterSequenceTypeModuleInfo: FfiConverterRustBuffer<List<Mo
             FfiConverterTypeModuleInfo.write(it, buf)
         }
     }
-} fun `getGreeting`(): kotlin.String {
+}
+
+
+
+
+public object FfiConverterSequenceTypeNativeEvent: FfiConverterRustBuffer<List<NativeEvent>> {
+    override fun read(buf: ByteBuffer): List<NativeEvent> {
+        val len = buf.getInt()
+        return List<NativeEvent>(len) {
+            FfiConverterTypeNativeEvent.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<NativeEvent>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeNativeEvent.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<NativeEvent>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeNativeEvent.write(it, buf)
+        }
+    }
+}
+
+
+
+
+public object FfiConverterSequenceTypeUiPatch: FfiConverterRustBuffer<List<UiPatch>> {
+    override fun read(buf: ByteBuffer): List<UiPatch> {
+        val len = buf.getInt()
+        return List<UiPatch>(len) {
+            FfiConverterTypeUiPatch.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<UiPatch>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeUiPatch.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<UiPatch>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeUiPatch.write(it, buf)
+        }
+    }
+} fun `diffLayouts`(`oldJson`: kotlin.String, `newJson`: kotlin.String): List<UiPatch> {
+            return FfiConverterSequenceTypeUiPatch.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_func_diff_layouts(
+        FfiConverterString.lower(`oldJson`),FfiConverterString.lower(`newJson`),_status)
+}
+    )
+    }
+
+ fun `getGreeting`(): kotlin.String {
             return FfiConverterString.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_feather_core_fn_func_get_greeting(
@@ -3257,6 +3516,15 @@ public object FfiConverterSequenceTypeModuleInfo: FfiConverterRustBuffer<List<Mo
 }
     )
     }
-    
+
+ fun `verifyManifestSignature`(`manifestJson`: kotlin.String, `signatureB64`: kotlin.String, `publicKeyB64`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_feather_core_fn_func_verify_manifest_signature(
+        FfiConverterString.lower(`manifestJson`),FfiConverterString.lower(`signatureB64`),FfiConverterString.lower(`publicKeyB64`),_status)
+}
+    )
+    }
+
 
 

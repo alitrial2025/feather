@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 uniffi = { version = "0.27.1", features = ["cli"] }
@@ -24,6 +24,13 @@ ring = "0.17"
 flexbuffers = "25.12.19"
 base64 = "0.22.1"
 flatbuffers = "24.3.25"
+
+rquickjs = { version = "0.14", features = ["parallel"] }
+
+# Generate mobile bindings against the selected NDK/Apple SDK headers;
+# borrowing a desktop ABI would be incorrect.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+rquickjs-sys = { version = "0.14", features = ["bindgen"] }
 
 [dev-dependencies]
 wat = "1.249.0"

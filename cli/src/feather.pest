@@ -20,11 +20,11 @@ for_expr = { "for" ~ "(" ~ identifier ~ "in" ~ expression ~ ")" ~ "{" ~ children
 expression = { term ~ (bin_op ~ term)* }
 term = { value | "(" ~ expression ~ ")" }
 
-bin_op = { "+" | "-" | "*" | "/" | "==" | "!=" | ">" | "<" | ">=" | "<=" | "&&" | "||" }
+bin_op = { "+" | "-" | "*" | "/" | "==" | "!=" | ">=" | "<=" | ">" | "<" | "&&" | "||" }
 
 value = { string_literal | number_literal | boolean_literal | list_literal | function_call | member_access | identifier }
 
-member_access = { identifier ~ ("." ~ identifier)+ }
+member_access = { ("state" | identifier) ~ ("." ~ identifier)+ }
 function_call = { identifier ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 
 list_literal = { "[" ~ (expression ~ ("," ~ expression)*)? ~ "]" }

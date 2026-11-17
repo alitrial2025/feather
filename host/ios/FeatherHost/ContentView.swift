@@ -51,6 +51,12 @@ struct ContentView: View {
                 }
             }
         }
+        .onAppear {
+            if showLauncher && Bundle.main.url(forResource: "app", withExtension: "js", subdirectory: "feather") != nil {
+                showLauncher = false
+                client.start()
+            }
+        }
         .onChange(of: scenePhase) { newPhase in
             switch newPhase {
             case .active:

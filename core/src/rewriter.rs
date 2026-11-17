@@ -519,7 +519,7 @@ impl GcRewriter {
                                 function.instruction(&Instruction::Call(self.gc_ref_cast_idx));
                             }
                             _ => {
-                                let translated = self.translate_op(&op);
+                                let translated = self.translate_op(&op)?;
                                 function.instruction(&translated);
                             }
                         }
@@ -563,11 +563,11 @@ impl GcRewriter {
         Ok(())
     }
 
-    fn translate_op<'a>(&self, op: &wasmparser::Operator<'a>) -> Instruction<'a> {
+    fn translate_op<'a>(&self, op: &wasmparser::Operator<'a>) -> Result<Instruction<'a>, RewriteError> {
         use wasmparser::Operator as P;
         use wasm_encoder::Instruction as E;
 
-        match op {
+        Ok(match op {
             P::Unreachable => E::Unreachable,
             P::Nop => E::Nop,
             P::Block { blockty } => E::Block(map_block_type(*blockty)),
@@ -669,11 +669,8 @@ impl GcRewriter {
             P::RefNull { .. } => E::I32Const(0), 
             P::RefIsNull => E::I32Eqz, 
             
-            P::Throw { .. } => E::Unreachable,
-            P::Rethrow { .. } => E::Unreachable,
-
-            _ => E::Unreachable,
-        }
+            _ => return Err(RewriteError::Unsupported(format!("instruction {op:?}"))),
+        })
     }
 }
 
@@ -704,3 +701,13 @@ fn map_memarg(memarg: &wasmparser::MemArg) -> wasm_encoder::MemArg {
     }
 }
 // Diagnostic comment
+
+#[cfg(test)]
+mod compatibility_tests {
+    #[test]
+    fn unsupported_instructions_are_not_silently_replaced_with_traps() {
+        let bytes = wat::parse_str("(module (func (export \"f\") (result f32) f32.const -1 f32.abs))").unwrap();
+        let error = super::GcRewriter::new(&bytes).rewrite().unwrap_err();
+        assert!(error.to_string().contains("F32Abs"), "{error}");
+    }
+}

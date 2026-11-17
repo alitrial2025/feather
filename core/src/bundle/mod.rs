@@ -15,6 +15,10 @@ pub struct BundleManifest {
     pub protocol_version: u8,
     pub render: BundleArtifact,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub javascript: Option<BundleArtifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub wasm: Option<BundleArtifact>,
     pub assets: Vec<BundleArtifact>,
     #[serde(default)]
@@ -141,6 +145,10 @@ pub fn with_delta(
 fn artifact_map(manifest: &BundleManifest) -> HashMap<String, String> {
     let mut artifacts = HashMap::new();
     artifacts.insert(manifest.render.path.clone(), manifest.render.sha256.clone());
+
+    if let Some(javascript) = &manifest.javascript {
+        artifacts.insert(javascript.path.clone(), javascript.sha256.clone());
+    }
 
     if let Some(wasm) = &manifest.wasm {
         artifacts.insert(wasm.path.clone(), wasm.sha256.clone());

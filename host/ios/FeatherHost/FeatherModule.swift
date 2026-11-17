@@ -53,7 +53,7 @@ class NativeModuleWrapper: NativeModule {
         if module.call(method: action, payload: json, context: context) {
             return "{\"status\": \"success\"}"
         }
-        throw ModuleError.ExecutionFailed(message: "Module call failed")
+        throw ModuleError.ExecutionFailed(errMsg: "Module call failed")
     }
     
     func callAsync(action: String, payload: String, callback: NativeCallback) {
