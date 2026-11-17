@@ -595,7 +595,7 @@
         // Auto-detect and connect websocket
         function connect() {
             const loc = window.location;
-            const wsUri = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + loc.host + "/ws";
+            const wsUri = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + loc.host + loc.pathname.replace(/\/devtools(?:\/index.html)?\/?$/, "") + "/ws";
             
             logToTerminal("Connecting to WebSocket dev server at " + wsUri + "...", "info");
             socket = new WebSocket(wsUri);

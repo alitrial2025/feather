@@ -2,7 +2,11 @@ name: Platform checks
 concurrency:
   group: platform-${{ github.ref }}
   cancel-in-progress: true
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -27,6 +31,7 @@ jobs:
       - run: python3 scripts/smoke_kotlin_js.py cli/target/debug/feather-cli core/target/debug/feather-bundle-check
       - run: python3 scripts/smoke_native_bindings.py
       - run: python3 scripts/smoke_native_bindings.py --refresh
+      - run: python3 scripts/smoke_phone_demo.py
 
   android:
     runs-on: ubuntu-latest
@@ -37,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android,x86_64-linux-android
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -55,9 +60,22 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
           python3 scripts/build_android_sample.py
           python3 scripts/build_android_sample.py --dev-host
+      - name: Build emulator runtime
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
+          python3 scripts/build_android_sample.py --abi x86_64
+      - name: Enable hardware acceleration
+        run: sudo chown "$USER" /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973" python3 scripts/build_android_sample.py --abi x86_64 --test-device
       - uses: actions/upload-artifact@v4
         with:
-          name: feather-android-arm64-debug
+          name: feather-android-debug
           path: build/native/android/*-debug.apk
           retention-days: 7
 

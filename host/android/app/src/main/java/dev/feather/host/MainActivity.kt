@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private var devServerBaseUrl by mutableStateOf("http://10.0.2.2:8080")
     private var devServerSocketUrl by mutableStateOf("ws://10.0.2.2:8080/ws")
     
+    private var devProjectPublicKey: String? = null
     private var isConnected by mutableStateOf(false)
     private var showLauncher by mutableStateOf(true)
     
@@ -79,12 +80,15 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                         if (showLauncher && !hasLocalBundle) {
                             LauncherScreen(
                                 initialIp = lastIp,
                                 onConnect = { ip ->
-                                    updateUrls(ip)
+                                    if (!updateUrls(ip)) {
+                                        android.widget.Toast.makeText(this@MainActivity, diagnosticErrors.firstOrNull() ?: "Invalid project link", android.widget.Toast.LENGTH_LONG).show()
+                                        return@LauncherScreen
+                                    }
                                     prefs.edit().putString("last_ip", ip).apply()
                                     showLauncher = false
                                     resetAndConnect()
@@ -102,7 +106,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 
                                 // Floating FAB to go back to launcher
-                                FloatingActionButton(
+                                if (!runtime.hasJavascript()) FloatingActionButton(
                                     onClick = { showLauncher = true },
                                     modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                                     backgroundColor = Color(0xFFE50914)
@@ -119,39 +123,34 @@ class MainActivity : ComponentActivity() {
         // 3. Start Runtimes
         startCorePolling()
         
-        // Handle Intent Data
-        val data = intent.data
-        val deepLinkUrl = if (data?.scheme == "feather" && data.host == "open") {
-            data.getQueryParameter("url")
-        } else {
-            null
-        }
+        handleProjectIntent(intent)
+    }
 
-        if (deepLinkUrl != null) {
-            val ip = deepLinkUrl.removePrefix("http://").removePrefix("https://").substringBefore(":")
-            updateUrls(ip)
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleProjectIntent(intent)
+    }
+
+    private fun handleProjectIntent(intent: android.content.Intent) {
+        val data = intent.data ?: return
+        if (data.scheme == "feather" && data.host == "open" && updateUrls(data.toString())) {
             showLauncher = false
             resetAndConnect()
         }
     }
 
-    private fun updateUrls(ip: String) {
-        val cleanInput = ip.trim()
-        try {
-            if (cleanInput.startsWith("http://") || cleanInput.startsWith("https://")) {
-                val url = java.net.URL(cleanInput)
-                val protocol = if (url.protocol == "https") "wss" else "ws"
-                val port = if (url.port != -1) ":${url.port}" else ""
-                devServerBaseUrl = "${url.protocol}://${url.host}$port"
-                devServerSocketUrl = "$protocol://${url.host}$port/ws"
-            } else {
-                devServerBaseUrl = "http://$cleanInput:8080"
-                devServerSocketUrl = "ws://$cleanInput:8080/ws"
-            }
-        } catch (e: Exception) {
-            // Fallback for malformed URLs
-            devServerBaseUrl = "http://$cleanInput:8080"
-            devServerSocketUrl = "ws://$cleanInput:8080/ws"
+    private fun updateUrls(input: String): Boolean {
+        return try {
+            val debugClient = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+            val connection = ProjectConnection.parse(input, allowProjectKey = debugClient)
+            devServerBaseUrl = connection.baseUrl
+            devServerSocketUrl = connection.socketUrl
+            devProjectPublicKey = connection.publicKey
+            true
+        } catch (error: Exception) {
+            diagnosticErrors = listOf(error.message ?: "Invalid project link")
+            false
         }
     }
 
@@ -331,7 +330,6 @@ class MainActivity : ComponentActivity() {
             override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
                 CoroutineScope(Dispatchers.Main).launch {
                     isConnected = true
-                    rootNode = FeatherNode.TextNode("Connected to Dev Server!")
                 }
             }
 
@@ -420,7 +418,7 @@ class MainActivity : ComponentActivity() {
 
                 // ─── Feature 1: Cryptographic Bundle Verification & Code Signing ───
                 val signature = manifest.optString("signature", "")
-                val hostPublicKeyB64 = getString(R.string.feather_bundle_public_key).trim()
+                val hostPublicKeyB64 = devProjectPublicKey ?: getString(R.string.feather_bundle_public_key).trim()
                 
                 if (signature.isEmpty() || !uniffi.feather_core.verifyManifestSignature(manifestPayload, signature, hostPublicKeyB64)) {
                     throw SecurityException("CRYPTOGRAPHIC SECURE BOOT FAULT")

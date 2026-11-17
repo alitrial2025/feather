@@ -24,3 +24,5 @@ flexbuffers = "25.12.19"
 ring = "0.17"
 base64 = "0.22.1"
 flatbuffers = "24.3.25"
+
+qrcode = { version = "0.13", default-features = false, features = ["svg"] }

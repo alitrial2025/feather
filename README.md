@@ -85,6 +85,10 @@ feather/
 
 ---
 
+## Android live demo
+
+[Feather Go and the WhatsApp-style chat demo](docs/phone-demo.md) provide the QR connection page, persistent Android development client, and a Feather SDK app that refreshes without rebuilding its APK. The current chat demo is local; real messaging and physical-device verification remain open.
+
 ## Experimental Kotlin application runtime
 
 The [Kotlin/JS runtime guide](docs/kotlin-js-runtime.md) includes a real compiled counter, code refresh, tests, and signed experimental bundles. Select `runtime: "kotlin-js"` in `feather.json`. The native host integration now builds an ARM64 Android debug APK; device execution and iOS build verification remain release gates. [Windows/WSL2 instructions](docs/windows-development.md) cover building and connecting the persistent host.

@@ -1,0 +1,10 @@
+{
+  "entry": "App.kt",
+  "runtime": "kotlin-js",
+  "sdkVersion": "1.0.0",
+  "metadata": {
+    "app_id": "dev.feather.whatsapp.demo",
+    "display_name": "WhatsApp · Feather",
+    "version_name": "0.1.0"
+  }
+}

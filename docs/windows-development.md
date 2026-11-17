@@ -1,5 +1,8 @@
 # Developing Feather from Windows
 
+For the QR-connected chat app and phone installation flow, start with
+[Feather Go and the chat demo](phone-demo.md).
+
 ## Try the native sample
 
 The cloud build produces these ARM64 Android debug APKs under

@@ -1,5 +1,6 @@
 mod bundler;
 mod compiler;
+mod connection;
 mod cli;
 mod commands;
 mod config;

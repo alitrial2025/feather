@@ -39,6 +39,7 @@ fun QRScanner(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    var scanned by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -91,6 +92,10 @@ fun QRScanner(
                 BarcodeScanning.getClient(options)
             }
 
+            DisposableEffect(scanner) {
+                onDispose { scanner.close() }
+            }
+
             AndroidView(
                 factory = { ctx ->
                     val previewView = PreviewView(ctx)
@@ -115,7 +120,10 @@ fun QRScanner(
                                     .addOnSuccessListener { barcodes ->
                                         for (barcode in barcodes) {
                                             barcode.rawValue?.let { value ->
-                                                onScan(value)
+                                                if (!scanned) {
+                                                    scanned = true
+                                                    onScan(value)
+                                                }
                                             }
                                         }
                                     }

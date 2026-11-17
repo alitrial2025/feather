@@ -9,10 +9,10 @@ import time
 
 
 class WebSocket:
-    def __init__(self, port):
+    def __init__(self, port, path="/ws"):
         self.socket = socket.create_connection(("127.0.0.1", port), timeout=5)
         key = base64.b64encode(os.urandom(16)).decode()
-        self.socket.sendall((f"GET /ws HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+        self.socket.sendall((f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
                              "Connection: Upgrade\r\nUpgrade: websocket\r\n"
                              f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
         headers = b""

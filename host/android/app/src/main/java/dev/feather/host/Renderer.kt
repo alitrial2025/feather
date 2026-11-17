@@ -95,6 +95,7 @@ fun FeatherRenderer(
         }
         is FeatherNode.TextInputNode -> {
             var value by remember(node.action) { mutableStateOf(node.value) }
+            LaunchedEffect(node.value) { value = node.value }
             val shape = RoundedCornerShape((node.style?.cornerRadius ?: 4).dp)
 
             Column(modifier = Modifier.applyContainerStyle(node.style, isFocusable = true)) {
@@ -1455,6 +1456,8 @@ private fun getIconByName(name: String): androidx.compose.ui.graphics.vector.Ima
         "refresh" -> Icons.Default.Refresh
         "notifications", "bell" -> Icons.Default.Notifications
         "email", "mail" -> Icons.Default.Email
+        "chat" -> Icons.Default.Chat
+        "groups" -> Icons.Default.Groups
         "phone" -> Icons.Default.Phone
         "location", "place" -> Icons.Default.Place
         "camera" -> Icons.Default.PhotoCamera
@@ -1482,19 +1485,7 @@ fun LauncherScreen(
         QRScanner(
             onScan = { scanned ->
                 showScanner = false
-                val deepLinkPrefix = "feather://open?url="
-                val cleanScanned = if (scanned.startsWith(deepLinkPrefix)) {
-                    scanned.removePrefix(deepLinkPrefix)
-                        .substringBefore("&") // Extract just the URL if there are more params
-                        .let { java.net.URLDecoder.decode(it, "UTF-8") }
-                } else {
-                    scanned
-                }
-                
-                // If it's a deep link url from CLI, it might be something like:
-                // http://192.168.1.5:8080/bundle
-                // We want to extract just the base part if needed, or updateUrls will handle it
-                onConnect(cleanScanned)
+                onConnect(scanned)
             },
             onClose = { showScanner = false }
         )
@@ -1519,12 +1510,12 @@ fun LauncherScreen(
         Spacer(modifier = Modifier.height(24.dp))
         
         Text(
-            text = "Welcome to Feather",
+            text = "Feather Go",
             style = TextStyle(color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         )
         
         Text(
-            text = "Enter your computer's local IP address or scan QR code.",
+            text = "Scan your project QR code to start coding live.",
             style = TextStyle(color = Color.Gray, fontSize = 14.sp, textAlign = TextAlign.Center),
             modifier = Modifier.padding(vertical = 16.dp)
         )

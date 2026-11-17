@@ -14,6 +14,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionName = "1.0"
         val bundleKey = providers.gradleProperty("featherBundlePublicKey").orElse("").get()
         require(bundleKey.isEmpty() || Regex("[A-Za-z0-9+/]{43}=").matches(bundleKey)) {
@@ -54,6 +55,10 @@ android {
 }
 
 dependencies {
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     implementation("androidx.core:core-ktx:1.13.1")
@@ -75,12 +80,12 @@ dependencies {
     implementation("org.msgpack:jackson-dataformat-msgpack:0.9.8")
 
     // CameraX
-    val cameraxVersion = "1.3.4"
+    val cameraxVersion = "1.4.2"
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 }
 
 // Keep bundle output outside tracked sources and remove stale staged assets when

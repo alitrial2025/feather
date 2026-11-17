@@ -42,3 +42,7 @@ Pods/
 
 # CI toolchain downloads
 .feather-ci-tools/
+
+# Python helper caches
+__pycache__/
+*.pyc

@@ -27,30 +27,33 @@ pub async fn run_server(config: DevServerConfig) {
         host
     };
 
-    let mut connect_url = format!("ws://{}:{}/ws", my_local_ip, port);
-    let mut tunnel_msg = "".to_string();
-
-    if config.tunnel {
-        if let Some(public_url) = get_public_url(port) {
-            connect_url = format!("{}/ws", public_url.replace("http", "ws"));
-            tunnel_msg = format!("🌐  Public Tunnel: {}\n", public_url);
-        } else {
-            tunnel_msg = "⚠️   Tunneling requested but no environment provider found.\n    Install ngrok: 'ngrok http 8080'\n".to_string();
-        }
+    let runtime = Arc::new(AppRuntime::default());
+    if let Err(error) = build_bundle(&config, &runtime) { eprintln!("Initial bundle: {error}"); }
+    let session = std::env::var("FEATHER_SESSION_TOKEN").ok();
+    if session.as_ref().is_some_and(|token| token.len() < 24 || !token.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))) {
+        eprintln!("FEATHER_SESSION_TOKEN must contain at least 24 URL-safe characters");
+        return;
     }
-
-    println!("\n-------------------------------------------");
-    println!("🪶  Feather Dev Server is active!");
-    println!("🔗  Connect at: {}", connect_url);
-    if !tunnel_msg.is_empty() {
-        print!("{}", tunnel_msg);
-    }
-    println!("-------------------------------------------");
-    println!("Scan this QR code with your phone to connect:");
-    if let Err(e) = print_qr(&connect_url) {
-        eprintln!("(Could not generate QR code: {})", e);
-    }
-    println!("-------------------------------------------\n");
+    let prefix = session.as_ref().map(|token| format!("/session/{token}")).unwrap_or_default();
+    let base = format!("{}{}", get_public_url(port).unwrap_or_else(|| format!("http://{my_local_ip}:{port}")).trim_end_matches('/'), prefix);
+    let key = fs::read_to_string(config.project_path.join(".feather/public_key.txt")).unwrap_or_default();
+    let name = config.manifest.metadata.display_name.clone().unwrap_or_else(|| config.project_path.file_name().unwrap().to_string_lossy().to_string());
+    let connection_uri = crate::connection::project_uri(&base, key.trim(), &name);
+    println!("🪶 Feather project ready: {name}");
+    println!("Scan this QR in Feather Go:");
+    if let Err(error) = print_qr(&connection_uri) { eprintln!("QR generation failed: {error}"); }
+    let metadata = serde_json::json!({"name":name,"runtime":config.manifest.runtime.clone().unwrap_or_else(||"layout".into()),"connection_uri":connection_uri,"sdk_version":"1.0.0"});
+    let metadata_route = warp::path!("project").and(warp::get()).map(move || warp::reply::json(&metadata));
+    let svg = match qrcode::QrCode::new(connection_uri.as_bytes()) {
+        Ok(code) => code.render::<qrcode::render::svg::Color>().min_dimensions(320,320).build(),
+        Err(error) => { eprintln!("Project connection URL exceeds QR capacity: {error}"); return; }
+    };
+    let qr_route = warp::path!("qr.svg").and(warp::get()).map(move || warp::reply::with_header(svg.clone(), "content-type", "image/svg+xml"));
+    let landing_route = warp::path::end().and(warp::get()).map(|| warp::reply::html(include_str!("connect.html")));
+    let apk = std::env::var_os("FEATHER_CLIENT_APK").map(std::path::PathBuf::from).unwrap_or_else(|| config.project_path.join(".feather/client.apk"));
+    let apk_route = warp::path!("client.apk").and(warp::get()).and(warp::fs::file(apk))
+        .with(warp::reply::with::header("content-type", "application/vnd.android.package-archive"))
+        .with(warp::reply::with::header("content-disposition", "attachment; filename=feather-go.apk"));
 
     println!("Project: {}", config.project_path.display());
     println!("Entry: {}", config.entry_path.display());
@@ -61,8 +64,6 @@ pub async fn run_server(config: DevServerConfig) {
 
     let (tx, _) = broadcast::channel::<String>(16);
     let tx = Arc::new(tx);
-    let runtime = Arc::new(AppRuntime::default());
-
     let previous_layout = Arc::new(std::sync::Mutex::new(LayoutBaseline::default()));
     {
         let initial_doc = render_document(&config, &runtime);
@@ -206,13 +207,17 @@ pub async fn run_server(config: DevServerConfig) {
         .and(warp::get())
         .map(move || warp::reply::html(devtools_html));
 
-    let routes = ws_route
+    let routes = landing_route.or(metadata_route).or(qr_route).or(apk_route).or(ws_route)
         .or(bundle_route)
         .or(artifact_route)
         .or(devtools_route)
         .or(devtools_index_route);
 
-    warp::serve(routes).run((host, port)).await;
+    if let Some(token) = session {
+        warp::serve(warp::path("session").and(warp::path(token)).and(routes)).run((host, port)).await;
+    } else {
+        warp::serve(routes).run((host, port)).await;
+    }
 }
 
 fn watch_files(
@@ -493,6 +498,9 @@ fn handle_layout_update(
 }
 
 fn get_public_url(port: u16) -> Option<String> {
+    if let Ok(url) = std::env::var("FEATHER_PUBLIC_URL") {
+        if url.starts_with("https://") || url.starts_with("http://") { return Some(url); }
+    }
     // 1. Check for Google Cloud Workstations (Monospace)
     if let Ok(web_host) = std::env::var("WEB_HOST") {
         return Some(format!("https://{}-{}", port, web_host));

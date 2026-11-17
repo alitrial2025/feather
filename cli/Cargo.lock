@@ -598,6 +598,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "qr2term",
+ "qrcode 0.13.0",
  "ring",
  "rmp-serde",
  "serde",
@@ -1776,8 +1777,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6867c60b38e9747a079a19614dbb5981a53f21b9a56c265f3bfdf6011a50a957"
 dependencies = [
  "crossterm",
- "qrcode",
+ "qrcode 0.14.1",
 ]
+
+[[package]]
+name = "qrcode"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "166f136dfdb199f98186f3649cf7a0536534a61417a1a30221b492b4fb60ce3f"
 
 [[package]]
 name = "qrcode"

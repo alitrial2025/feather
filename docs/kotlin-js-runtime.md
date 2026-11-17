@@ -121,6 +121,8 @@ release gates. Do not deploy these bundles as production mobile apps.
 - Native hosts use app-configured public keys, verified JavaScript loading and
   regenerated bindings. Android's Gradle property is `featherBundlePublicKey`;
   iOS uses `FeatherBundlePublicKey` in Info.plist. Missing/invalid keys reject code.
+  Feather Go debug builds additionally pair with a public key supplied by the
+  project QR; release builds reject that override. See [phone demo](phone-demo.md).
   Camera/map sample plugins remain opt-in and are not default host capabilities.
 
 ## Why this backend exists

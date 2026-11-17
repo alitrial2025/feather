@@ -15,3 +15,5 @@ captures/
 
 # Feather Production Bundles
 src/main/assets/feather/
+
+.kotlin/
