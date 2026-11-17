@@ -6,7 +6,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      FEATHER_TOOLS_HOME: ${{ runner.temp }}/feather-tools
+      FEATHER_TOOLS_HOME: ${{ github.workspace }}/.feather-ci-tools
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -28,7 +28,7 @@ jobs:
   android:
     runs-on: ubuntu-latest
     env:
-      FEATHER_TOOLS_HOME: ${{ runner.temp }}/feather-tools
+      FEATHER_TOOLS_HOME: ${{ github.workspace }}/.feather-ci-tools
       CARGO_TARGET_DIR: ${{ github.workspace }}/core/target
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +53,7 @@ jobs:
   ios:
     runs-on: macos-15
     env:
-      FEATHER_TOOLS_HOME: ${{ runner.temp }}/feather-tools
+      FEATHER_TOOLS_HOME: ${{ github.workspace }}/.feather-ci-tools
       CARGO_TARGET_DIR: ${{ github.workspace }}/core/target
     steps:
       - uses: actions/checkout@v4

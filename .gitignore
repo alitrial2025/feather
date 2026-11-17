@@ -39,3 +39,6 @@ Pods/
 .idx/
 
 
+
+# CI toolchain downloads
+.feather-ci-tools/
