@@ -37,8 +37,20 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
+  FeatherHostUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FeatherHostUITests
+    dependencies:
+      - target: FeatherHost
+    info:
+      path: build/UITestInfo.plist
 schemes:
   FeatherHost:
     build:
       targets:
         FeatherHost: all
+    test:
+      targets:
+        - FeatherHostUITests

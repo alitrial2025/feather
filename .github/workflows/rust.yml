@@ -1,4 +1,7 @@
-name: Rust platform
+name: Platform checks
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
 on: [push, pull_request]
 permissions:
   contents: read
@@ -40,6 +43,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install native prerequisites
         run: |
           sudo apt-get update
@@ -49,6 +54,12 @@ jobs:
       - run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
           python3 scripts/build_android_sample.py
+          python3 scripts/build_android_sample.py --dev-host
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feather-android-arm64-debug
+          path: build/native/android/*-debug.apk
+          retention-days: 7
 
   ios:
     runs-on: macos-15
@@ -63,4 +74,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: brew install xcodegen
-      - run: python3 scripts/build_ios_sample.py
+      - run: python3 scripts/build_ios_sample.py --test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-results
+          path: host/ios/build/CounterUITests.xcresult
+          if-no-files-found: ignore

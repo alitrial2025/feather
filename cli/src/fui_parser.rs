@@ -66,7 +66,7 @@ fn evaluate_expression(pair: pest::iterators::Pair<Rule>) -> String {
         Rule::term => evaluate_expression(pair.into_inner().next().unwrap()),
         Rule::value => {
             let inner = pair.into_inner().next().unwrap();
-            inner.as_str().to_string()
+            inner.as_str().trim().to_string()
         }
         _ => pair.as_str().to_string(),
     }
@@ -432,6 +432,12 @@ mod tests {
         } else {
             panic!("Expected folded Text");
         }
+    }
+
+    #[test]
+    fn keyword_prefixes_and_underscores_remain_valid_identifiers() {
+        let fui = parse_fui("state state_name = stateful.age Text(state_name)").unwrap();
+        assert_eq!(fui.states.get("state_name").unwrap(), "stateful.age");
     }
 
     #[test]

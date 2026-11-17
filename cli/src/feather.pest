@@ -24,13 +24,14 @@ bin_op = { "+" | "-" | "*" | "/" | "==" | "!=" | ">=" | "<=" | ">" | "<" | "&&" 
 
 value = { string_literal | number_literal | boolean_literal | list_literal | function_call | member_access | identifier }
 
-member_access = { ("state" | identifier) ~ ("." ~ identifier)+ }
+state_identifier = @{ "state" ~ !(ASCII_ALPHANUMERIC | "_") }
+member_access = { (state_identifier | identifier) ~ ("." ~ identifier)+ }
 function_call = { identifier ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 
 list_literal = { "[" ~ (expression ~ ("," ~ expression)*)? ~ "]" }
 
 identifier = @{ !reserved_word ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-reserved_word = @{ ("if" | "else" | "for" | "in" | "state" | "import" | "true" | "false") ~ !ASCII_ALPHANUMERIC }
+reserved_word = @{ ("if" | "else" | "for" | "in" | "state" | "import" | "true" | "false") ~ !(ASCII_ALPHANUMERIC | "_") }
 
 string_literal = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 number_literal = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }

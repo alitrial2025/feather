@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build a simulator application on macOS; no signing account is required."""
+import argparse
+import json
 import os
 from pathlib import Path
 import platform
@@ -9,6 +11,9 @@ import sys
 
 if sys.platform != "darwin":
     raise SystemExit("iOS simulator builds require macOS/Xcode; use the macOS CI job from Windows.")
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", action="store_true", help="Run the packaged counter UI test in an iOS simulator")
+options = parser.parse_args()
 repo = Path(__file__).resolve().parents[1]
 project = repo / "samples/runtime-counter"
 environment = os.environ.copy()
@@ -45,8 +50,21 @@ assets = repo / "host/ios/build/runtime-assets/feather"
 if assets.exists(): shutil.rmtree(assets)
 shutil.copytree(bundle, assets)
 run(["xcodegen", "generate", "--spec", "project.yml"], cwd=repo / "host/ios")
-run(["xcodebuild", "-project", repo / "host/ios/FeatherHost.xcodeproj", "-scheme", "FeatherHost", "-configuration", "Debug",
+build_command = ["xcodebuild", "-project", repo / "host/ios/FeatherHost.xcodeproj", "-scheme", "FeatherHost", "-configuration", "Debug",
     "-sdk", "iphonesimulator", "-destination", "generic/platform=iOS Simulator", "ARCHS=" + arch,
     "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO", "FEATHER_BUNDLE_PUBLIC_KEY=" + (project / ".feather/public_key.txt").read_text().strip(),
-    "-derivedDataPath", repo / "host/ios/build/DerivedData", "build"])
+    "-derivedDataPath", repo / "host/ios/build/DerivedData"]
+run(build_command + ["build"])
+if options.test:
+    devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "--json"], text=True))
+    candidates = [device for runtime, entries in devices["devices"].items() if ".iOS-" in runtime
+        for device in entries if device.get("isAvailable") and "iPhone" in device["name"]]
+    if not candidates: raise SystemExit("No available iPhone simulator")
+    device = candidates[0]
+    results = repo / "host/ios/build/CounterUITests.xcresult"
+    if results.exists(): shutil.rmtree(results)
+    command = build_command.copy()
+    command[command.index("-destination") + 1] = "id=" + device["udid"]
+    run(command + ["-resultBundlePath", results, "test"])
+    print("PASS: simulator UI test exercised packaged Kotlin rendering/actions and relaunch")
 print("Built simulator app; launch/runtime/device validation remains required.")
