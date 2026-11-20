@@ -1,0 +1,43 @@
+{
+  "name": "feather-fui",
+  "displayName": "Feather UI",
+  "description": "Feather UI language support and project diagnostics.",
+  "version": "0.1.0",
+  "publisher": "alitrial2025",
+  "engines": { "vscode": "^1.85.0" },
+  "repository": { "type": "git", "url": "https://github.com/alitrial2025/feather.git" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "files": ["extension.js", "language-configuration.json", "syntaxes/**", "snippets/**", "README.md"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Running Feather Doctor requires a trusted workspace."
+    }
+  },
+  "contributes": {
+    "languages": [
+      { "id": "feather-fui", "aliases": ["Feather UI", "FUI"], "extensions": [".fthr"], "configuration": "./language-configuration.json" }
+    ],
+    "grammars": [
+      { "language": "feather-fui", "scopeName": "source.feather-fui", "path": "./syntaxes/feather.tmLanguage.json" }
+    ],
+    "snippets": [
+      { "language": "feather-fui", "path": "./snippets/feather.json" }
+    ],
+    "commands": [
+      { "command": "feather.doctor", "title": "Feather: Run Doctor" }
+    ],
+    "configuration": {
+      "title": "Feather",
+      "properties": {
+        "feather.cliPath": {
+          "type": "string",
+          "default": "feather-cli",
+          "scope": "machine",
+          "description": "Feather CLI executable path or name on PATH."
+        }
+      }
+    }
+  }
+}

@@ -196,64 +196,54 @@ pub async fn doctor(project_path: PathBuf) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-pub async fn init_project(name: String) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🪶 Initializing new Feather project: {name}");
-
+pub async fn init_project(
+    name: String,
+    template: crate::cli::Starter,
+) -> Result<(), Box<dyn std::error::Error>> {
     let project_dir = PathBuf::from(&name);
-    if project_dir.exists() {
-        return Err(format!("Directory '{name}' already exists.").into());
-    }
-
-    let src_dir = project_dir
-        .join("src")
-        .join("commonMain")
-        .join("kotlin")
-        .join("com")
-        .join("example")
-        .join(&name);
-    let feather_dir = project_dir.join(".feather");
-
-    fs::create_dir_all(&src_dir)?;
-    fs::create_dir_all(&feather_dir)?;
+    fs::create_dir(&project_dir)
+        .map_err(|error| format!("Could not create {}: {error}", project_dir.display()))?;
 
     let manifest = serde_json::json!({
-        "entry": format!("src/commonMain/kotlin/com/example/{name}/App.kt"),
-        "assets": ["src/commonMain/resources"],
-        "generatedIr": "build/generated/ksp/metadata/commonMain/kotlin/feather/app.feather.json",
-        "fallbackIr": ".feather/app.feather.json",
+        "entry": "App.kt",
+        "runtime": "kotlin-js",
         "sdkVersion": FEATHER_SDK_VERSION,
         "modules": {}
     });
-    fs::write(
-        project_dir.join("feather.json"),
-        serde_json::to_string_pretty(&manifest)?,
-    )?;
+    let app_source = match template {
+        crate::cli::Starter::Counter => r#"package feather.starter
 
-    let app_source = format!(
-        r#"package com.example.{name}
+import dev.feather.sdk.Button
+import dev.feather.sdk.Column
+import dev.feather.sdk.FeatherApp
+import dev.feather.sdk.Text
+import dev.feather.sdk.Widget
+import dev.feather.sdk.getState
+import dev.feather.sdk.installApp
+import dev.feather.sdk.setState
 
-import dev.feather.sdk.*
+class Counter : FeatherApp() {
+    private fun count() = getState("count")?.toIntOrNull() ?: 0
 
-class App : FeatherApp() {{
-    override fun render(): Widget {{
-        return Column(
-            Text("Hello from {name}!"),
-            Button(
-                text = "Click me",
-                action = "buttonClicked"
-            ),
-        )
-    }}
+    override fun render(): Widget = Column(
+        Text("Count: ${count()}"),
+        Button("Increment", "increment")
+    )
 
-    override fun handleAction(action: String, payload: String?) {{
-        println("Action: $action")
-    }}
-}}
-"#
-    );
-    fs::write(src_dir.join("App.kt"), app_source)?;
+    override fun handleAction(action: String, payload: String?) {
+        if (action == "increment") setState("count", (count() + 1).toString())
+    }
+}
 
-    println!("✅ Project created at ./{name}");
+fun main() = installApp(Counter())
+"#,
+        crate::cli::Starter::Chat => include_str!("../../samples/whatsapp/App.kt"),
+    };
+    fs::write(project_dir.join("App.kt"), app_source)?;
+    fs::write(project_dir.join("feather.json"), serde_json::to_vec_pretty(&manifest)?)?;
+
+    println!("Project created at {}", project_dir.display());
+    println!("Start Feather Go pairing with feather-cli start --phone from the project directory.");
     Ok(())
 }
 

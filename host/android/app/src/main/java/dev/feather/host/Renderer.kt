@@ -229,6 +229,8 @@ fun FeatherRenderer(
                 node.children.forEach { child ->
                     if (child is FeatherNode.SpacerNode) {
                         Spacer(modifier = Modifier.weight(child.flex.toFloat().coerceAtLeast(0.01f)))
+                    } else if (child is FeatherNode.TextInputNode && child.style?.width == "fill") {
+                        Box(Modifier.weight(1f)) { FeatherRenderer(child, onAction) }
                     } else {
                         FeatherRenderer(child, onAction)
                     }
@@ -1343,11 +1345,17 @@ private fun parseNode(json: JSONObject): FeatherNode {
             size = json.optInt("size", 40),
             strokeWidth = json.optInt("strokeWidth", 4),
         )
+        "FloatingActionButton" -> FeatherNode.FloatingActionButtonNode(
+            icon = json.optString("icon", "plus"),
+            action = json.optString("action"),
+            background = json.optStringOrNull("background"),
+            iconColor = json.optStringOrNull("iconColor"),
+        )
         "Scaffold" -> FeatherNode.ScaffoldNode(
-            topBar = if (json.has("topBar")) parseNode(json.getJSONObject("topBar")) else null,
-            bottomBar = if (json.has("bottomBar")) parseNode(json.getJSONObject("bottomBar")) else null,
-            floatingActionButton = if (json.has("floatingActionButton")) parseNode(json.getJSONObject("floatingActionButton")) else null,
-            drawer = if (json.has("drawer")) parseNode(json.getJSONObject("drawer")) else null,
+            topBar = json.optJSONObject("topBar")?.let(::parseNode),
+            bottomBar = json.optJSONObject("bottomBar")?.let(::parseNode),
+            floatingActionButton = json.optJSONObject("floatingActionButton")?.let(::parseNode),
+            drawer = json.optJSONObject("drawer")?.let(::parseNode),
             body = parseNode(json.getJSONObject("body")),
             style = style,
         )
@@ -1375,7 +1383,13 @@ private fun parseNode(json: JSONObject): FeatherNode {
             val tabsArray = json.optJSONArray("tabs") ?: org.json.JSONArray()
             FeatherNode.BottomTabsNode(
                 tabs = List(tabsArray.length()) { index ->
-                    parseNode(tabsArray.getJSONObject(index))
+                    val tab = tabsArray.getJSONObject(index)
+                    FeatherNode.TabNode(
+                        title = tab.optString("title", "Tab"),
+                        route = tab.optString("route", "home"),
+                        icon = tab.optStringOrNull("icon"),
+                        content = parseNode(tab.getJSONObject("content")),
+                    )
                 },
                 style = style
             )

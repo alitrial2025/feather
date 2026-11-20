@@ -26,9 +26,32 @@ fun main(args: Array<String>) {
     fun action(name: String, payload: String? = null) {
         runtime.applyActionEvent("""{"action":"$name","payload":${payload ?: "null"}}""")
     }
-    fun document() = runtime.renderJavascriptDocument()
+    fun document() = runtime.renderJavascript()
+    AppRuntime().use { standalone ->
+        standalone.setState("host_standalone", "true")
+        standalone.loadSignedJavascript(fetch("/bundle/manifest"), fetch("/bundle/artifact/app.js"), key)
+        val restore = standalone.drainModuleCalls().single()
+        check(restore.contains("chat:restored-history") && restore.contains("feather-storage"))
+        standalone.applyActionEvent("""{"action":"__deepLink","payload":"/chat/amina"}""")
+        check(standalone.renderJavascript().contains("Conversation"))
+        standalone.applyActionEvent("""{"action":"draft","payload":"New durable message"}""")
+        standalone.applyActionEvent("""{"action":"send"}""")
+        check(standalone.drainModuleCalls().isEmpty())
+        check(standalone.renderJavascript().contains("New durable message"))
+        standalone.setState("chat:restored-history", """{"amina":[{"text":"Saved before restart","mine":true,"time":"Now"}]}""")
+        check(standalone.renderJavascript().contains("Saved before restart"))
+        standalone.applyActionEvent("""{"action":"send"}""")
+        val save = standalone.drainModuleCalls().single()
+        check(save.contains("New durable message") && save.contains("Saved before restart"))
+        standalone.applyActionEvent("""{"action":"__deepLink","payload":"/chat/unknown"}""")
+        check(standalone.renderJavascript().contains("New durable message"))
+    }
     reload()
+    check(runtime.drainConsoleLogs().contains("Feather Chat ready"))
     check(document().contains("WhatsApp") && document().contains("Amina Hassan"))
+    action("new")
+    check(document().contains("New chat") && document().contains("Amina Hassan"))
+    action("back")
     action("filter:Groups")
     check(document().contains("Weekend plans") && !document().contains("Amina Hassan"))
     action("filter:All")
@@ -37,7 +60,9 @@ fun main(args: Array<String>) {
     action("draft", "\"Hello from Feather\"")
     action("send")
     check(document().contains("Hello from Feather"))
+    check(runtime.drainConsoleLogs().contains("Feather Chat: message sent"))
     check(runtime.getState("draft:amina") == "\"\"")
+    action("draft", "\"Draft kept across refresh\"")
     action("back")
     check(document().contains("Hello from Feather"))
     action("query", "\"David\"")
@@ -66,6 +91,7 @@ fun main(args: Array<String>) {
                         check(document().contains("Hello from Feather"))
                         action("open:amina")
                         check(document().contains("Hello from Feather"))
+                        check(document().contains("Draft kept across refresh"))
                     } catch (error: Throwable) { failure.set(error) }
                     finally { done.countDown() }
                 }

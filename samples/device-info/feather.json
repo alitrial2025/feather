@@ -1,0 +1,11 @@
+{
+  "entry": "App.kt",
+  "runtime": "kotlin-js",
+  "sdkVersion": "1.0.0",
+  "deep_links": [{"scheme": "feather", "host": "app", "path_prefix": "/device-info"}],
+  "metadata": {
+    "app_id": "dev.feather.sample.deviceinfo",
+    "display_name": "Feather Device Info",
+    "version_name": "1.0.0"
+  }
+}

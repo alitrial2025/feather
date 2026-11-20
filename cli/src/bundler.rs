@@ -22,11 +22,28 @@ use std::sync::Arc;
 
 pub fn render_document(config: &DevServerConfig, runtime: &Arc<AppRuntime>) -> String {
     if config.manifest.runtime.as_deref() == Some("kotlin-js") {
-        return javascript_document(config, runtime).unwrap_or_else(|error| serde_json::json!({
-            "type": "render_error", "protocol_version": 1,
-            "root": {"type": "Text", "text": "Kotlin runtime error"},
-            "diagnostics": [{"level": "error", "message": error}]
-        }).to_string());
+        return match javascript_document(config, runtime) {
+            Ok(document) => {
+                if let Ok(value) = serde_json::from_str::<Value>(&document) {
+                    if let Some(diagnostics) = value["diagnostics"].as_array() {
+                        for diagnostic in diagnostics {
+                            if let Some(message) = diagnostic["message"].as_str() {
+                                crate::app_logs::print("Preview", diagnostic["level"].as_str().unwrap_or("error"), message);
+                            }
+                        }
+                    }
+                }
+                document
+            }
+            Err(error) => {
+                crate::app_logs::print("Preview", "error", &error);
+                serde_json::json!({
+                    "type": "render_error", "protocol_version": 1,
+                    "root": {"type": "Text", "text": "Kotlin runtime error"},
+                    "diagnostics": [{"level": "error", "message": error}]
+                }).to_string()
+            }
+        };
     }
     // Try WASM execution first — if a compiled .wasm exists, use it
     let wasm_path = config.project_path.join(".feather").join("app.wasm");
@@ -496,7 +513,7 @@ mod signing_tests {
     }
 }
 
-fn javascript_document(config: &DevServerConfig, runtime: &Arc<AppRuntime>) -> Result<String, String> {
+pub fn javascript_document(config: &DevServerConfig, runtime: &AppRuntime) -> Result<String, String> {
     let source = fs::read_to_string(config.project_path.join(".feather/app.js"))
         .map_err(|error| format!("Run feather-cli compile-js first: {error}"))?;
     runtime.load_javascript(source).map_err(|error| error.to_string())?;

@@ -10,18 +10,149 @@ final class FeatherDevClient: NSObject, ObservableObject {
     @Published var errors: [String] = []
 
     // ─── Feather Runtime ─────────────────────────────────────────────────────
-    private let runtime = AppRuntime()
+    private var runtime = AppRuntime()
     private var renderTimer: Timer?
-    let moduleRegistry = ModuleRegistry()
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private var bundleTask: Task<Void, Never>?
+    private(set) var moduleRegistry = ModuleRegistry()
 
     private var baseURL: URL
     private var socketURL: URL
     private var socket: URLSessionWebSocketTask?
+    private var projectPublicKey: String?
     private var reconnectTimer: Timer?
     private let maxReconnectAttempts = 5
     private var reconnectAttempts = 0
     private var bundleFetchGeneration: UInt64 = 0
     private var currentJsonMessage: [String: Any]? = nil
+    private var diagnosticBundle: [String: Any]?
+    private var diagnosticURL: URL?
+    private var standaloneLinks: [[String: Any]] = []
+    private var standaloneJavascript = false
+    var canManageProject: Bool { !standaloneJavascript }
+    var projectEngine: String {
+        switch runtimeName {
+        case "kotlin-js": return "Kotlin/JS"
+        case "wasm": return "WebAssembly"
+        default: return "Layout"
+        }
+    }
+    private var runtimeName: String {
+        if runtime.hasJavascript() { return "kotlin-js" }
+        if runtime.hasWasm() { return "wasm" }
+        return "layout"
+    }
+    var projectModules: [ModuleInfo] { runtime.getRegisteredModules().sorted { $0.name < $1.name } }
+
+    deinit {
+        renderTimer?.invalidate()
+        reconnectTimer?.invalidate()
+        bundleTask?.cancel()
+        socket?.cancel(with: .goingAway, reason: nil)
+        lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+
+    func openAppLink(_ url: URL) {
+        guard let path = appLinkPath(url, links: standaloneLinks),
+              let event = try? JSONSerialization.data(withJSONObject: ["action": "__deepLink", "payload": path]),
+              let text = String(data: event, encoding: .utf8) else { return }
+        runtime.applyActionEvent(payload: text)
+    }
+
+    private func loadJavascript(manifest: String, source: String, key: String, url: URL? = nil) throws {
+        forwardConsoleLogs()
+        do {
+            try runtime.loadSignedJavascript(manifestJson: manifest, source: source, publicKey: key)
+        } catch {
+            publishDiagnostic(phase: "load", level: "error", message: diagnosticMessage(error), url: url, bundle: nil)
+            throw error
+        }
+        let value = try JSONSerialization.jsonObject(with: Data(manifest.utf8)) as? [String: Any] ?? [:]
+        let metadata = value["metadata"] as? [String: Any]
+        let artifact = value["javascript"] as? [String: Any]
+        var identity: [String: Any] = [
+            "app_id": metadata?["app_id"] as? String ?? value["name"] as? String ?? "",
+            "bundle_version": value["bundle_version"] as? Int ?? 0,
+            "sha256": artifact?["sha256"] as? String ?? ""
+        ]
+        identity["app_version"] = metadata?["version_name"] as? String
+        diagnosticBundle = identity
+        diagnosticURL = url
+    }
+
+    private func renderJavascript() throws -> String {
+        let document: String
+        do {
+            document = try runtime.renderJavascriptDocument()
+        } catch {
+            for event in runtime.drainDiagnostics() {
+                reportDiagnostic(phase: "runtime", level: event.level, message: event.message)
+            }
+            reportDiagnostic(phase: "render", level: "error", message: diagnosticMessage(error))
+            throw error
+        }
+        let payload = try JSONSerialization.jsonObject(with: Data(document.utf8)) as? [String: Any]
+        for event in payload?["diagnostics"] as? [[String: String]] ?? [] {
+            if let message = event["message"] {
+                reportDiagnostic(phase: "runtime", level: event["level"] ?? "error", message: message)
+            }
+        }
+        return document
+    }
+
+    private func diagnosticMessage(_ error: Error) -> String {
+        if let runtimeError = error as? ModuleError, case let .ExecutionFailed(message) = runtimeError {
+            return message
+        }
+        return error.localizedDescription
+    }
+
+    private func reportDiagnostic(phase: String, level: String, message: String) {
+        publishDiagnostic(phase: phase, level: level, message: message, url: diagnosticURL, bundle: diagnosticBundle)
+    }
+
+    private func publishDiagnostic(phase: String, level: String, message: String, url: URL?, bundle: [String: Any]?) {
+        if url == nil && (Bundle.main.object(forInfoDictionaryKey: "FeatherProductionDiagnostics") as? Bool) != true {
+            return
+        }
+        var event: [String: Any] = [
+            "type": "diagnostic",
+            "schema_version": 1,
+            "platform": "ios",
+            "host": [
+                "id": Bundle.main.bundleIdentifier ?? "",
+                "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+                "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+            ],
+            "phase": phase,
+            "level": level,
+            "message": String(message.prefix(16_384))
+        ]
+        event["bundle"] = bundle
+        if let url {
+            if url == baseURL { sendLogEvent(event) }
+        } else if let data = try? JSONSerialization.data(withJSONObject: event),
+                  let text = String(data: data, encoding: .utf8) {
+            NSLog("FeatherDiagnostics %@", text)
+        }
+    }
+
+    private func sendLogEvent(_ event: [String: Any]) {
+        #if DEBUG
+        if let socket, let data = try? JSONSerialization.data(withJSONObject: event),
+           let text = String(data: data, encoding: .utf8) {
+            socket.send(.string(text)) { _ in }
+        }
+        #endif
+    }
+
+    private func forwardConsoleLogs() {
+        let messages = runtime.drainConsoleLogs()
+        guard diagnosticBundle == nil || diagnosticURL == baseURL else { return }
+        for message in messages {
+            sendLogEvent(["type": "log", "platform": "ios", "message": message])
+        }
+    }
 
     override init() {
         let lastIp = UserDefaults.standard.string(forKey: "last_ip") ?? "127.0.0.1"
@@ -93,56 +224,61 @@ final class FeatherDevClient: NSObject, ObservableObject {
         
         // ─── Priority 3: Dev Server ───────────────────────────────────────────
         connectWebSocket()
-        Task {
-            await fetchBundleRender()
-        }
+        requestBundle()
     }
 
-    func updateURLs(hostOrURL: String) {
-        let trimmed = hostOrURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        UserDefaults.standard.set(trimmed, forKey: "last_ip")
-        
-        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
-            guard let url = URL(string: trimmed) else { return }
-            let scheme = url.scheme ?? "http"
-            let host = url.host ?? "127.0.0.1"
-            let port = url.port != nil ? ":\(url.port!)" : ""
-            
-            self.baseURL = URL(string: "\(scheme)://\(host)\(port)") ?? URL(string: "http://127.0.0.1:8080")!
-            let wsScheme = scheme == "https" ? "wss" : "ws"
-            self.socketURL = URL(string: "\(wsScheme)://\(host)\(port)/ws") ?? URL(string: "ws://127.0.0.1:8080/ws")!
-        } else {
-            self.baseURL = URL(string: "http://\(trimmed):8080") ?? URL(string: "http://127.0.0.1:8080")!
-            self.socketURL = URL(string: "ws://\(trimmed):8080/ws") ?? URL(string: "ws://127.0.0.1:8080/ws")!
+    @discardableResult
+    func updateURLs(hostOrURL: String) -> Bool {
+        #if DEBUG
+        let allowProjectKey = true
+        #else
+        let allowProjectKey = false
+        #endif
+        guard let project = ProjectConnection.parse(hostOrURL, allowProjectKey: allowProjectKey) else {
+            return false
         }
+        bundleFetchGeneration += 1
+        baseURL = project.baseURL
+        socketURL = project.socketURL
+        projectPublicKey = project.publicKey
+        UserDefaults.standard.set(hostOrURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "last_ip")
+        return true
     }
 
     func resetAndConnect() {
+        guard !standaloneJavascript else { return }
+        standaloneLinks = []
+        bundleFetchGeneration += 1
+        startRenderLoop()
+        reconnectAttempts = 0
         errors = []
         root = .text(id: UUID().uuidString, text: "Connecting to \(baseURL.absoluteString)...")
         disconnect()
         connectWebSocket()
-        Task {
-            await fetchBundleRender()
-        }
+        requestBundle()
     }
 
     private func loadStandaloneBundle() -> Bool {
         if let url = Bundle.main.url(forResource: "app", withExtension: "js", subdirectory: "feather") {
+            standaloneJavascript = true
             do {
                 guard let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "feather") else {
                     throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey: "Missing signed manifest"])
                 }
                 let key = Bundle.main.object(forInfoDictionaryKey: "FeatherBundlePublicKey") as? String ?? ""
-                try runtime.loadSignedJavascript(manifestJson: String(contentsOf: manifestURL, encoding: .utf8),
-                    source: String(contentsOf: url, encoding: .utf8), publicKey: key.trimmingCharacters(in: .whitespacesAndNewlines))
-                let document = try runtime.renderJavascriptDocument()
+                let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
+                runtime.setState(key: "host_standalone", jsonValue: "true")
+                try loadJavascript(manifest: manifest,
+                    source: String(contentsOf: url, encoding: .utf8), key: key.trimmingCharacters(in: .whitespacesAndNewlines))
+                let document = try renderJavascript()
                 let data = Data(document.utf8)
                 let (node, diagnostics) = try FeatherRenderPayload.decode(data)
                 currentJsonMessage = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                 root = node
                 errors = diagnostics
                 isConnected = true
+                let value = try JSONSerialization.jsonObject(with: Data(manifest.utf8)) as? [String: Any]
+                standaloneLinks = value?["deep_links"] as? [[String: Any]] ?? []
             } catch {
                 root = .text(id: UUID().uuidString, text: "Bundle verification or startup failed")
                 errors = [error.localizedDescription]
@@ -189,15 +325,15 @@ final class FeatherDevClient: NSObject, ObservableObject {
     // MARK: - Render & Module Loop
 
     private func setupLifecycleObservers() {
-        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+        lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.runtime.pushNativeEvent(name: "onResume", payload: "{}")
-        }
-        NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+        })
+        lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.runtime.pushNativeEvent(name: "onPause", payload: "{}")
-        }
-        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+        })
+        lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.runtime.pushNativeEvent(name: "onStop", payload: "{}")
-        }
+        })
     }
 
     private func startRenderLoop() {
@@ -206,12 +342,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
 
-                // Drain console logs
-                let logs = self.runtime.drainConsoleLogs()
-                let errorLogs = logs.filter { $0.localizedCaseInsensitiveContains("error") || $0.localizedCaseInsensitiveContains("exception") }
-                if !errorLogs.isEmpty {
-                    self.errors = errorLogs
-                }
+                self.forwardConsoleLogs()
 
                 if self.runtime.pollRenderNeeded() {
                     // Drain module calls first
@@ -219,7 +350,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
 
                     if self.runtime.hasJavascript() {
                         do {
-                            let data = Data(try self.runtime.renderJavascriptDocument().utf8)
+                            let data = Data(try self.renderJavascript().utf8)
                             let (node, diagnostics) = try FeatherRenderPayload.decode(data)
                             self.currentJsonMessage = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                             self.root = node
@@ -264,11 +395,26 @@ final class FeatherDevClient: NSObject, ObservableObject {
         
         let payload = json["payload"] as? [String: Any] ?? [:]
         let resultStateKey = json["resultStateKey"] as? String
+        if moduleName == "feather-device", method == "hasModule", let key = resultStateKey {
+            let available = runtime.getRegisteredModules().contains { $0.name == (payload["moduleName"] as? String) }
+            sendStateAssignment(key, available ? "true" : "false")
+            return
+        }
+        if moduleName == "feather-device", method == "getRuntimeInfo", let key = resultStateKey {
+            let modules = Dictionary(uniqueKeysWithValues: projectModules.map { ($0.name, $0.version) })
+            let info: [String: Any] = ["runtime": runtimeName, "modules": modules]
+            if let data = try? JSONSerialization.data(withJSONObject: info),
+               let value = String(data: data, encoding: .utf8) {
+                sendStateAssignment(key, value)
+            }
+            return
+        }
         
-        var context = moduleContext()
+        let baseContext = moduleContext()
+        var context = baseContext
         if let key = resultStateKey, !key.isEmpty {
             context = FeatherModuleContext(urlSession: .shared) { _, value in
-                self.sendStateAssignment(key, value)
+                baseContext.sendStateAssignment(key, value)
             }
         }
         
@@ -302,15 +448,19 @@ final class FeatherDevClient: NSObject, ObservableObject {
     func fetchBundleRender() async {
         bundleFetchGeneration += 1
         let generation = bundleFetchGeneration
+        let projectURL = baseURL
+        let pinnedKey = Bundle.main.object(forInfoDictionaryKey: "FeatherBundlePublicKey") as? String ?? ""
+        let publicKey = projectPublicKey ?? pinnedKey
         do {
-            let manifestURL = baseURL.appending(path: "bundle/manifest")
+            let manifestURL = projectURL.appending(path: "bundle/manifest")
             let (manifestData, _) = try await URLSession.shared.data(from: manifestURL)
+            guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
             let manifest = try JSONDecoder().decode(BundleManifest.self, from: manifestData)
 
             // ─── Feature 1: Cryptographic Bundle Verification & Code Signing ───
             let signature = manifest.signature ?? ""
             let manifestJSON = String(data: manifestData, encoding: .utf8) ?? "{}"
-            let hostPublicKeyB64 = (Bundle.main.object(forInfoDictionaryKey: "FeatherBundlePublicKey") as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let hostPublicKeyB64 = publicKey.trimmingCharacters(in: .whitespacesAndNewlines)
             
             if signature.isEmpty || !verifyManifestSignature(manifestJson: manifestJSON, signatureB64: signature, publicKeyB64: hostPublicKeyB64) {
                 throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey: "CRYPTOGRAPHIC SECURE BOOT FAULT"])
@@ -343,14 +493,14 @@ final class FeatherDevClient: NSObject, ObservableObject {
                 guard manifest.javascript?.path == "app.js" else {
                     throw NSError(domain: "Feather", code: 403, userInfo: [NSLocalizedDescriptionKey:"Invalid JavaScript artifact"])
                 }
-                let (sourceData, response) = try await URLSession.shared.data(from: baseURL.appending(path: "bundle/artifact/app.js"))
+                let (sourceData, response) = try await URLSession.shared.data(from: projectURL.appending(path: "bundle/artifact/app.js"))
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let source = String(data: sourceData, encoding: .utf8) else {
                     throw NSError(domain: "Feather", code: 502, userInfo: [NSLocalizedDescriptionKey:"JavaScript download failed"])
                 }
-                guard generation == bundleFetchGeneration else { return }
-                try runtime.loadSignedJavascript(manifestJson: manifestJSON, source: source, publicKey: hostPublicKeyB64)
-                let data = Data(try runtime.renderJavascriptDocument().utf8)
+                guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
+                try loadJavascript(manifest: manifestJSON, source: source, key: hostPublicKeyB64, url: projectURL)
+                let data = Data(try renderJavascript().utf8)
                 let (node, diagnostics) = try FeatherRenderPayload.decode(data)
                 currentJsonMessage = try JSONSerialization.jsonObject(with: data) as? [String:Any]
                 root = node
@@ -361,32 +511,36 @@ final class FeatherDevClient: NSObject, ObservableObject {
 
             // Fetch WASM if present (prefer compressed)
             if let wasmArtifact = manifest.wasm {
-                let wasmURL = baseURL
+                let wasmURL = projectURL
                     .appending(path: "bundle/artifact")
                     .appending(path: wasmArtifact.path)
                 if let wasmData = try? await tryFetchCompressed(url: wasmURL) {
+                    guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
                     try? runtime.loadWasm(wasmBytes: wasmData)
                 }
             }
 
             let renderPath = manifest.render.path
             let mpPath = renderPath.replacingOccurrences(of: ".json", with: ".mp")
-            let mpURL = baseURL.appending(path: "bundle/artifact").appending(path: mpPath)
+            let mpURL = projectURL.appending(path: "bundle/artifact").appending(path: mpPath)
 
             // Try MessagePack first
             if let mpData = try? await tryFetchCompressed(url: mpURL) {
+                guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
                 let (node, newErrors) = FeatherRenderPayload.decodeMessagePack(mpData)
                 self.root = node
                 self.errors = newErrors + missingModules
                 isConnected = true
             } else {
                 // Fallback to JSON
-                let renderURL = baseURL
+                guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
+                let renderURL = projectURL
                     .appending(path: "bundle/artifact")
                     .appending(path: renderPath)
 
                 if let renderData = try? await tryFetchCompressed(url: renderURL),
                    let jsonPayload = String(data: renderData, encoding: .utf8) {
+                    guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
 
                     let finalRenderPayload = runtime.hasWasm() ? (runtime.renderWasm() ?? jsonPayload) : jsonPayload
 
@@ -412,6 +566,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
                 }
             }
         } catch {
+            guard !Task.isCancelled, generation == bundleFetchGeneration else { return }
             let nsError = error as NSError
             if nsError.localizedDescription == "CRYPTOGRAPHIC SECURE BOOT FAULT" {
                 root = .text(id: UUID().uuidString, text: "CRYPTOGRAPHIC SECURE BOOT FAULT")
@@ -462,16 +617,46 @@ final class FeatherDevClient: NSObject, ObservableObject {
     func connectWebSocket() {
         socket = URLSession.shared.webSocketTask(with: socketURL)
         socket?.resume()
-        isConnected = true
-        reconnectAttempts = 0
         receiveNextMessage()
     }
 
     func disconnect() {
+        bundleFetchGeneration += 1
+        bundleTask?.cancel()
+        bundleTask = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         isConnected = false
         reconnectTimer?.invalidate()
+    }
+
+    func closeProject() {
+        disconnect()
+        renderTimer?.invalidate()
+        renderTimer = nil
+        moduleRegistry.onStop()
+        moduleRegistry.onDestroy()
+        currentJsonMessage = nil
+        diagnosticBundle = nil
+        diagnosticURL = nil
+        lastDelta = nil
+        root = .text(id: UUID().uuidString, text: "Waiting for Feather CLI...")
+        runtime = AppRuntime()
+        moduleRegistry = ModuleRegistry()
+        registerOfficialModules()
+        errors = []
+    }
+
+    func refreshProject() {
+        if isConnected { requestBundle() } else { resetAndConnect() }
+    }
+
+    private func requestBundle() {
+        bundleTask?.cancel()
+        bundleTask = Task { [weak self] in
+            guard let self else { return }
+            await self.fetchBundleRender()
+        }
     }
 
     func sendAction(action: String, payload: String?) {
@@ -522,7 +707,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
         moduleRegistry.register(DeviceInfoModule())
         moduleRegistry.register(NetworkModule())
         moduleRegistry.register(StorageModule())
-        moduleRegistry.register(NavigationModule(onNavigateAction: self.sendAction))
+        moduleRegistry.register(NavigationModule { [weak self] action, payload in
+            self?.sendAction(action: action, payload: payload)
+        })
         moduleRegistry.register(MediaModule())
         moduleRegistry.register(WebViewModule())
         moduleRegistry.register(FilesModule())
@@ -551,7 +738,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
     }
 
     private func moduleContext() -> FeatherModuleContext {
-        return FeatherModuleContext(urlSession: .shared) { key, value in
+        let engine = runtime
+        return FeatherModuleContext(urlSession: .shared) { [weak self, weak engine] key, value in
+            guard let self, let engine, self.runtime === engine else { return }
             self.sendStateAssignment(key, value)
         }
     }
@@ -569,19 +758,25 @@ final class FeatherDevClient: NSObject, ObservableObject {
     // MARK: - Private
 
     private func receiveNextMessage() {
-        socket?.receive { [weak self] result in
+        guard let connection = socket else { return }
+        connection.receive { [weak self, weak connection] result in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, let connection, self.socket === connection else { return }
 
                 switch result {
                 case .success(let message):
+                    self.isConnected = true
+                    if self.reconnectAttempts > 0 {
+                        self.reconnectAttempts = 0
+                        self.requestBundle()
+                    }
                     if case .string(let payload) = message,
                        let data = payload.data(using: .utf8),
                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         
                         let type = json["type"] as? String
                         if type == "hot-reload-js" {
-                            Task { await self.fetchBundleRender() }
+                            self.requestBundle()
                         } else if type == "devtools_state_update" {
                             if let key = json["key"] as? String, let value = json["value"],
                                let data = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed),
@@ -634,12 +829,9 @@ final class FeatherDevClient: NSObject, ObservableObject {
                     }
                     self.receiveNextMessage()
 
-                case .failure(let error):
+                case .failure:
                     self.isConnected = false
-                    self.root = .text(
-                        id: UUID().uuidString,
-                        text: "Connection lost: \(error.localizedDescription)"
-                    )
+                    self.errors = ["Development server disconnected. Reconnecting…"]
                     self.scheduleReconnect()
                 }
             }
@@ -647,12 +839,14 @@ final class FeatherDevClient: NSObject, ObservableObject {
     }
 
     private func fetchWasmAndReload(path: String) {
+        let generation = bundleFetchGeneration
         Task {
             do {
                 let wasmURL = baseURL
                     .appending(path: "bundle/artifact")
                     .appending(path: path)
                 let data = try await tryFetchCompressed(url: wasmURL)
+                guard generation == bundleFetchGeneration else { return }
                 try runtime.hotReloadWasm(wasmBytes: data)
             } catch {
                 print("Hot reload failed: \(error.localizedDescription)")
@@ -662,10 +856,7 @@ final class FeatherDevClient: NSObject, ObservableObject {
 
     private func scheduleReconnect() {
         guard reconnectAttempts < maxReconnectAttempts else {
-            root = .text(
-                id: UUID().uuidString,
-                text: "Failed to reconnect after \(maxReconnectAttempts) attempts."
-            )
+            errors = ["Development server disconnected. Return to the launcher to reconnect."]
             return
         }
 

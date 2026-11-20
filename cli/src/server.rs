@@ -16,12 +16,12 @@ struct LayoutBaseline {
     recovering: bool,
 }
 
-pub async fn run_server(config: DevServerConfig) {
+pub async fn run_server(config: DevServerConfig, session: Option<String>) {
     let host = config.host;
     let port = config.port;
 
     // Detect local IP for easier connection from mobile devices
-    let my_local_ip = if host.is_loopback() || host.is_unspecified() {
+    let my_local_ip = if host.is_unspecified() || (host.is_loopback() && session.is_none()) {
         local_ip().unwrap_or(host)
     } else {
         host
@@ -29,17 +29,20 @@ pub async fn run_server(config: DevServerConfig) {
 
     let runtime = Arc::new(AppRuntime::default());
     if let Err(error) = build_bundle(&config, &runtime) { eprintln!("Initial bundle: {error}"); }
-    let session = std::env::var("FEATHER_SESSION_TOKEN").ok();
-    if session.as_ref().is_some_and(|token| token.len() < 24 || !token.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))) {
-        eprintln!("FEATHER_SESSION_TOKEN must contain at least 24 URL-safe characters");
-        return;
-    }
     let prefix = session.as_ref().map(|token| format!("/session/{token}")).unwrap_or_default();
-    let base = format!("{}{}", get_public_url(port).unwrap_or_else(|| format!("http://{my_local_ip}:{port}")).trim_end_matches('/'), prefix);
+    let origin = get_public_url(port)
+        .unwrap_or_else(|| format!("http://{}", std::net::SocketAddr::new(my_local_ip, port)));
+    let base = format!("{}{prefix}", origin.trim_end_matches('/'));
     let key = fs::read_to_string(config.project_path.join(".feather/public_key.txt")).unwrap_or_default();
     let name = config.manifest.metadata.display_name.clone().unwrap_or_else(|| config.project_path.file_name().unwrap().to_string_lossy().to_string());
     let connection_uri = crate::connection::project_uri(&base, key.trim(), &name);
     println!("🪶 Feather project ready: {name}");
+    if session.is_some() {
+        println!("Connection page: {base}/");
+        if host == std::net::Ipv4Addr::UNSPECIFIED {
+            println!("Local connection page: http://127.0.0.1:{port}{prefix}/");
+        }
+    }
     println!("Scan this QR in Feather Go:");
     if let Err(error) = print_qr(&connection_uri) { eprintln!("QR generation failed: {error}"); }
     let metadata = serde_json::json!({"name":name,"runtime":config.manifest.runtime.clone().unwrap_or_else(||"layout".into()),"connection_uri":connection_uri,"sdk_version":"1.0.0"});
@@ -96,6 +99,9 @@ pub async fn run_server(config: DevServerConfig) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
         loop {
             interval.tick().await;
+            for message in poll_runtime.drain_console_logs() {
+                crate::app_logs::console("Preview", &message);
+            }
             
             // Drain module calls first
             let calls = poll_runtime.drain_module_calls();
@@ -372,15 +378,8 @@ async fn handle_connection(
                     if let Ok(text) = msg.to_str() {
                         let is_handled = if let Ok(json) = serde_json::from_str::<serde_json::Value>(text) {
                             if let Some(msg_type) = json.get("type").and_then(|v| v.as_str()) {
-                                if msg_type == "log" {
-                                    if let Some(log_msg) = json.get("message").and_then(|v| v.as_str()) {
-                                        println!("📱 [DEVICE LOG]: {}", log_msg);
-                                    }
-                                    true
-                                } else if msg_type == "error" {
-                                    if let Some(err_msg) = json.get("message").and_then(|v| v.as_str()) {
-                                        eprintln!("📱 🚨 [DEVICE ERROR]: {}", err_msg);
-                                    }
+                                if matches!(msg_type, "log" | "error" | "diagnostic") {
+                                    crate::app_logs::device_event(&json, msg_type);
                                     true
                                 } else if msg_type == "devtools_state_update" || msg_type == "state_update" {
                                     if let (Some(key), Some(value)) = (

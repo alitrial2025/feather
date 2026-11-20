@@ -15,7 +15,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--project", type=Path, default=repo / "samples/runtime-counter")
 parser.add_argument("--abi", choices=["arm64-v8a", "x86_64"], default="arm64-v8a")
 parser.add_argument("--test-device", action="store_true", help="Run the packaged counter test on a connected device/emulator")
+parser.add_argument("--test-class", default="dev.feather.host.CounterDeviceTest", help="Instrumentation class for --test-device")
 parser.add_argument("--dev-host", action="store_true", help="Build a persistent host without embedding application code")
+parser.add_argument("--output", type=Path, help="Destination for the verified debug APK")
 options = parser.parse_args()
 project = options.project.resolve()
 environment = os.environ.copy()
@@ -90,6 +92,9 @@ with zipfile.ZipFile(apk) as archive:
             name_length, extra_length = struct.unpack_from("<HH", header, 26)
             assert (info.header_offset + 30 + name_length + extra_length) % 16384 == 0, name
 artifact = repo / "build/native/android" / (("feather-dev-host" if options.dev_host else "feather-counter") + ("" if options.abi == "arm64-v8a" else "-x86_64") + "-debug.apk")
+if options.output:
+    artifact = options.output.resolve()
+artifact.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(apk, artifact)
 print("PASS: verified application asset mode, " + options.abi + " runtime and 16 KB alignment in " + str(artifact))
 print("Debug APK only; install/run on a matching device before claiming device readiness.")
@@ -98,5 +103,6 @@ if options.test_device:
     if options.dev_host: raise SystemExit("Counter instrumentation requires the packaged application, not --dev-host")
     test_command = gradle.copy()
     test_command[test_command.index(":app:assembleDebug")] = ":app:connectedDebugAndroidTest"
+    test_command.append("-Pandroid.testInstrumentationRunnerArguments.class=" + options.test_class)
     run(test_command)
-    print("PASS: connected Android test exercised packaged Kotlin rendering and action execution")
+    print("PASS: connected Android test " + options.test_class)

@@ -1,5 +1,6 @@
 pub mod flat_serializer;
 pub mod diff;
+pub mod verified;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

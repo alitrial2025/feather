@@ -1,5 +1,23 @@
 # Feather SDK 1.0
 
+## Runtime capabilities in Feather Go
+
+Feather Go's Project Tools panel shows the active engine and native module
+versions. It also lets you check for a signed update, reconnect, or close the
+project. Closing drops the project's in-memory engine and state.
+
+Kotlin/JS apps can request the same runtime information from the SDK:
+
+```kotlin
+Button("Inspect runtime", Platform.getRuntimeInfo("runtime_info"))
+val info = getStateJson<Platform.RuntimeInfo>("runtime_info")
+Button("Check storage", Platform.hasModule("feather-storage", "has_storage"))
+```
+
+The host writes the results into the requested state keys. `RuntimeInfo`
+contains a `runtime` identifier (`kotlin-js`, `wasm`, or `layout`) and a
+`modules` map of names to versions. The capability check writes a Boolean.
+
 Feather SDK 1.0 establishes the first stable prototype contract between KMP app code, the Rust CLI, and native host apps.
 
 ## Included Surface

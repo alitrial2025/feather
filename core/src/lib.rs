@@ -8,6 +8,7 @@ pub mod wasm;
 uniffi::setup_scaffolding!();
 
 pub use state::StateValue;
+pub use bundle::verified::VerifiedBundle;
 pub use bundle::{BundleManifest, BundleArtifact, BundleModule, BundleDelta, BundleBuild, artifact_for, discover_modules, read_previous_manifest, with_delta};
 pub use wasm::WasmRuntime;
 
@@ -316,33 +317,34 @@ impl AppRuntime {
     }
 
     pub fn drain_console_logs(&self) -> Vec<String> {
-        let mut buffer = self.console_buffer.lock().unwrap();
-        let logs = buffer.clone();
-        buffer.clear();
-        logs
+        std::mem::take(&mut *self.console_buffer.lock().unwrap())
     }
 
     pub fn drain_diagnostics(&self) -> Vec<Diagnostic> {
-        let mut buffer = self.diagnostics_buffer.lock().unwrap();
-        let diagnostics = buffer.clone();
-        buffer.clear();
-        diagnostics
+        std::mem::take(&mut *self.diagnostics_buffer.lock().unwrap())
     }
 
     pub fn report_diagnostic(&self, level: String, message: String) {
-        self.diagnostics_buffer.lock().unwrap().push(Diagnostic { level, message });
+        let mut diagnostics = self.diagnostics_buffer.lock().unwrap();
+        if diagnostics.len() == 256 {
+            diagnostics.remove(0);
+        }
+        diagnostics.push(Diagnostic { level, message });
     }
 
     pub fn push_native_event(&self, name: String, payload: String) {
-        self.event_queue.lock().unwrap().push(NativeEvent { name, payload });
+        {
+            let mut events = self.event_queue.lock().unwrap();
+            if events.len() == 256 {
+                events.remove(0);
+            }
+            events.push(NativeEvent { name, payload });
+        }
         *self.needs_render.lock().unwrap() = true;
     }
 
     pub fn drain_native_events(&self) -> Vec<NativeEvent> {
-        let mut queue = self.event_queue.lock().unwrap();
-        let events = queue.clone();
-        queue.clear();
-        events
+        std::mem::take(&mut *self.event_queue.lock().unwrap())
     }
 
     pub fn deliver_module_result(&self, callback_id: String, result_json: String) {

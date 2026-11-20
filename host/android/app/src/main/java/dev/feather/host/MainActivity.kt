@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -16,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -37,6 +41,11 @@ class MainActivity : ComponentActivity() {
     
     private var devProjectPublicKey: String? = null
     private var isConnected by mutableStateOf(false)
+    private var reconnectJob: Job? = null
+    private var bundleJob: Job? = null
+    private var reconnectAttempts = 0
+    private var showProjectTools by mutableStateOf(false)
+    @Volatile private var closing = false
     private var showLauncher by mutableStateOf(true)
     
     private var rootNode by mutableStateOf<FeatherNode>(
@@ -46,11 +55,96 @@ class MainActivity : ComponentActivity() {
     
     private val client = OkHttpClient()
     private val moduleRegistry = ModuleRegistry()
-    private var devSocket: WebSocket? = null
+    @Volatile private var devSocket: WebSocket? = null
     private val runtime = AppRuntime()
     private val bundleFetchMutex = Mutex()
     private val coreScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var currentJsonMessage: JSONObject? = null
+    private var standaloneLinks: JSONArray? = null
+    private var standaloneJavascript = false
+    private val javascriptLock = Any()
+    private var diagnosticSocket: WebSocket? = null
+    private var diagnosticBundle: JSONObject? = null
+    private val productionDiagnostics by lazy {
+        packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA)
+            .metaData?.getBoolean("dev.feather.host.PRODUCTION_DIAGNOSTICS") == true
+    }
+    private val hostIdentity by lazy {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        JSONObject()
+            .put("id", packageName)
+            .put("version", info.versionName)
+            .put("build", androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info).toString())
+    }
+
+    private fun loadJavascript(manifest: String, source: String, key: String, socket: WebSocket? = null) {
+        synchronized(javascriptLock) {
+            forwardConsoleLogs()
+            try {
+                runtime.loadSignedJavascript(manifest, source, key)
+            } catch (error: Exception) {
+                reportDiagnostic("load", "error", error.message ?: "JavaScript load failed", socket, null)
+                throw error
+            }
+            val value = JSONObject(manifest)
+            val metadata = value.optJSONObject("metadata")
+            diagnosticBundle = JSONObject()
+                .put("app_id", metadata?.optString("app_id")?.takeIf { it.isNotBlank() && it != "null" } ?: value.optString("name"))
+                .put("app_version", metadata?.optString("version_name")?.takeIf { it.isNotBlank() && it != "null" })
+                .put("bundle_version", value.optInt("bundle_version"))
+                .put("sha256", value.getJSONObject("javascript").getString("sha256"))
+            diagnosticSocket = socket
+        }
+    }
+
+    private fun renderJavascript(): String = synchronized(javascriptLock) {
+        val document = try {
+            runtime.renderJavascriptDocument()
+        } catch (error: Exception) {
+            runtime.drainDiagnostics().forEach { reportDiagnostic("runtime", it.level, it.message) }
+            reportDiagnostic("render", "error", error.message ?: "JavaScript render failed")
+            throw error
+        }
+        val diagnostics = JSONObject(document).optJSONArray("diagnostics")
+        for (index in 0 until (diagnostics?.length() ?: 0)) {
+            val event = diagnostics?.optJSONObject(index) ?: continue
+            reportDiagnostic("runtime", event.optString("level"), event.optString("message"))
+        }
+        document
+    }
+
+    private fun reportDiagnostic(
+        phase: String,
+        level: String,
+        message: String,
+        socket: WebSocket? = diagnosticSocket,
+        bundle: JSONObject? = diagnosticBundle
+    ) {
+        val forward = socket != null && socket === devSocket &&
+            applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (!forward && (socket != null || !productionDiagnostics)) return
+        val event = JSONObject()
+            .put("type", "diagnostic")
+            .put("schema_version", 1)
+            .put("platform", "android")
+            .put("host", hostIdentity)
+            .put("bundle", bundle)
+            .put("phase", phase)
+            .put("level", level)
+            .put("message", message.take(16_384))
+        if (forward) socket?.send(event.toString())
+        else android.util.Log.e("FeatherDiagnostics", event.toString())
+    }
+
+    private fun forwardConsoleLogs() {
+        val socket = devSocket
+        val logs = runtime.drainConsoleLogs()
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0 ||
+            (diagnosticBundle != null && diagnosticSocket !== socket)) return
+        logs.forEach { message ->
+            socket?.send(JSONObject().put("type", "log").put("platform", "android").put("message", message).toString())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,10 +168,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             CompositionLocalProvider(LocalModuleRegistry provides moduleRegistry) {
                 MaterialTheme {
-                    BackHandler(enabled = !showLauncher) {
-                        if (!showLauncher) {
-                            showLauncher = true
-                        }
+                    BackHandler(enabled = !showLauncher && !standaloneJavascript) {
+                        showProjectTools = true
                     }
                     
                     Box(modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
@@ -96,22 +188,28 @@ class MainActivity : ComponentActivity() {
                             )
                         } else {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                FeatherRenderer(
-                                    node = rootNode,
-                                    onAction = ::sendAction,
-                                )
+                                Box(
+                                    Modifier.fillMaxSize().padding(top = if (standaloneJavascript) 0.dp else 48.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    FeatherRenderer(
+                                        node = rootNode,
+                                        onAction = ::sendAction,
+                                    )
+                                }
                                 DiagnosticsOverlay(
                                     errors = diagnosticErrors,
                                     onRetry = { resetAndConnect() }
                                 )
                                 
-                                // Floating FAB to go back to launcher
-                                if (!runtime.hasJavascript()) FloatingActionButton(
-                                    onClick = { showLauncher = true },
-                                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                                    backgroundColor = Color(0xFFE50914)
-                                ) {
-                                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
+                                if (!standaloneJavascript) {
+                                    IconButton(
+                                        onClick = { showProjectTools = true },
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                                    ) {
+                                        Icon(Icons.Default.Settings, contentDescription = "Feather Go project tools")
+                                    }
+                                    if (showProjectTools) ProjectTools()
                                 }
                             }
                         }
@@ -134,7 +232,13 @@ class MainActivity : ComponentActivity() {
 
     private fun handleProjectIntent(intent: android.content.Intent) {
         val data = intent.data ?: return
-        if (data.scheme == "feather" && data.host == "open" && updateUrls(data.toString())) {
+        if (intent.action != android.content.Intent.ACTION_VIEW) return
+        if (data.scheme == "feather" && data.host == "app") {
+            val path = appLinkPath(data.toString(), standaloneLinks) ?: return
+            runtime.applyActionEvent(JSONObject().put("action", "__deepLink").put("payload", path).toString())
+            return
+        }
+        if (!standaloneJavascript && data.scheme == "feather" && data.host == "open" && updateUrls(data.toString())) {
             showLauncher = false
             resetAndConnect()
         }
@@ -155,6 +259,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resetAndConnect() {
+        if (standaloneJavascript) return
+        standaloneLinks = null
+        reconnectJob?.cancel()
+        reconnectAttempts = 0
+        isConnected = false
         diagnosticErrors = emptyList()
         rootNode = FeatherNode.TextNode("Connecting to $devServerBaseUrl...")
         devSocket?.close(1000, "Reconnecting")
@@ -169,14 +278,17 @@ class MainActivity : ComponentActivity() {
             // A packaged JavaScript app must authenticate before any code executes.
             val javascript = runCatching { assets.open("feather/app.js").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
             if (javascript != null) {
+                standaloneJavascript = true
                 try {
                     val manifest = assets.open("feather/manifest.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
-                    runtime.loadSignedJavascript(manifest, javascript, getString(R.string.feather_bundle_public_key).trim())
-                    val document = runtime.renderJavascriptDocument()
+                    runtime.setState("host_standalone", "true")
+                    loadJavascript(manifest, javascript, getString(R.string.feather_bundle_public_key).trim())
+                    val document = renderJavascript()
                     currentJsonMessage = JSONObject(document)
                     val (root, errors) = parseRenderMessage(document, moduleRegistry)
                     rootNode = root
                     diagnosticErrors = errors
+                    standaloneLinks = JSONObject(manifest).optJSONArray("deep_links")
                 } catch (error: Exception) {
                     rootNode = FeatherNode.TextNode("Bundle verification or startup failed")
                     diagnosticErrors = listOf(error.message ?: "JavaScript bundle rejected")
@@ -250,10 +362,65 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        coreScope.cancel()
-        devSocket?.close(1000, "Activity destroyed")
-        super.onDestroy()
+        closing = true
+        closeProjectConnection()
+        client.connectionPool.evictAll()
         moduleRegistry.onDestroy()
+        val engine = runtime
+        coreScope.coroutineContext[Job]?.invokeOnCompletion { engine.destroy() }
+        coreScope.cancel()
+        super.onDestroy()
+    }
+
+    private fun closeProjectConnection() {
+        reconnectJob?.cancel()
+        bundleJob?.cancel()
+        val socket = devSocket
+        devSocket = null
+        socket?.cancel()
+        client.dispatcher.cancelAll()
+        isConnected = false
+    }
+
+    @Composable
+    private fun ProjectTools() {
+        val modules = remember { runtime.getRegisteredModules().sortedBy { it.name } }
+        val engine = when (runtimeName()) {
+            "kotlin-js" -> "Kotlin/JS"
+            "wasm" -> "WebAssembly"
+            else -> "Layout"
+        }
+        AlertDialog(
+            onDismissRequest = { showProjectTools = false },
+            title = { Text("Project tools") },
+            text = {
+                Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+                    Text(if (isConnected) "Connected · $engine" else "Disconnected · $engine")
+                    modules.forEach { Text("${it.name}  ${it.version}") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showProjectTools = false
+                    if (isConnected) fetchBundleRender() else resetAndConnect()
+                }) { Text(if (isConnected) "Check for update" else "Reconnect") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showProjectTools = false
+                    closeProjectConnection()
+                    showLauncher = true
+                    setIntent(android.content.Intent(this, MainActivity::class.java))
+                    recreate()
+                }) { Text("Close project") }
+            }
+        )
+    }
+
+    private fun runtimeName() = when {
+        runtime.hasJavascript() -> "kotlin-js"
+        runtime.hasWasm() -> "wasm"
+        else -> "layout"
     }
 
     override fun onRequestPermissionsResult(
@@ -277,7 +444,7 @@ class MainActivity : ComponentActivity() {
                     drainModuleCalls()
                     
                     if (runtime.hasJavascript()) {
-                        runCatching { withContext(Dispatchers.Default) { runtime.renderJavascriptDocument() } }.onSuccess { document ->
+                        runCatching { withContext(Dispatchers.Default) { renderJavascript() } }.onSuccess { document ->
                             currentJsonMessage = JSONObject(document)
                             val (root, errors) = parseRenderMessage(document, moduleRegistry)
                             rootNode = root
@@ -302,13 +469,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 
-                // Drain and send logs to CLI
-                val logs = runtime.drainConsoleLogs()
-                logs.forEach { log ->
-                    val logEvent = JSONObject()
-                        .put("type", "log")
-                        .put("message", log)
-                    devSocket?.send(logEvent.toString())
+                withContext(Dispatchers.Default) {
+                    synchronized(javascriptLock) { forwardConsoleLogs() }
                 }
 
                 kotlinx.coroutines.delay(16)
@@ -328,13 +490,19 @@ class MainActivity : ComponentActivity() {
         val request = Request.Builder().url(devServerSocketUrl).build()
         devSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
-                CoroutineScope(Dispatchers.Main).launch {
+                coreScope.launch {
+                    if (webSocket !== devSocket) return@launch
                     isConnected = true
+                    if (reconnectAttempts > 0) {
+                        reconnectAttempts = 0
+                        fetchBundleRender()
+                    }
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                CoroutineScope(Dispatchers.Main).launch {
+                coreScope.launch {
+                    if (webSocket !== devSocket) return@launch
                     val json = runCatching { JSONObject(text) }.getOrNull()
                     val type = json?.optString("type")
                     if (type == "hot-reload-js") {
@@ -376,16 +544,40 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
-                CoroutineScope(Dispatchers.Main).launch {
-                    isConnected = false
-                    rootNode = FeatherNode.TextNode("Connection Failed: ${t.message}\nCheck if CLI is running at $devServerSocketUrl")
-                }
+                scheduleReconnect(webSocket)
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                webSocket.close(1000, null)
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                scheduleReconnect(webSocket)
             }
         })
     }
 
+    private fun scheduleReconnect(socket: WebSocket) {
+        coreScope.launch {
+            if (socket !== devSocket || reconnectJob?.isActive == true) return@launch
+            isConnected = false
+            if (reconnectAttempts >= 5) {
+                diagnosticErrors = listOf("Development server disconnected. Return to the launcher to reconnect.")
+                return@launch
+            }
+            val retryDelay = 500L shl reconnectAttempts
+            reconnectAttempts++
+            diagnosticErrors = listOf("Development server disconnected. Reconnecting…")
+            reconnectJob = coreScope.launch {
+                delay(retryDelay)
+                if (socket === devSocket) connectToDevServer()
+            }
+        }
+    }
+
     private fun fetchWasmAndReload(path: String) {
-        CoroutineScope(Dispatchers.IO).launch {
+        val socket = devSocket ?: return
+        coreScope.launch(Dispatchers.IO) {
             runCatching {
                 val wasmRequest = Request.Builder()
                     .url("$devServerBaseUrl/bundle/artifact/$path")
@@ -394,7 +586,7 @@ class MainActivity : ComponentActivity() {
                     response.body?.bytes()
                 }
             }.onSuccess { bytes ->
-                if (bytes != null) {
+                if (bytes != null && socket === devSocket) {
                     runtime.hotReloadWasm(bytes)
                 }
             }
@@ -402,8 +594,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun fetchBundleRender() {
-        coreScope.launch(Dispatchers.IO) {
+        val socket = devSocket ?: return
+        bundleJob?.cancel()
+        bundleJob = coreScope.launch(Dispatchers.IO) {
             bundleFetchMutex.withLock {
+            if (socket !== devSocket) return@withLock
             var missingModules: List<String> = emptyList()
             var renderPayload: String? = null
             
@@ -453,9 +648,11 @@ class MainActivity : ComponentActivity() {
                         check(response.isSuccessful) { "JavaScript download failed: ${response.code}" }
                         response.body?.string() ?: error("Empty JavaScript response")
                     }
-                    runtime.loadSignedJavascript(manifestPayload, source, hostPublicKeyB64)
-                    val document = runtime.renderJavascriptDocument()
+                    if (socket !== devSocket) return@runCatching
+                    loadJavascript(manifestPayload, source, hostPublicKeyB64, socket)
+                    val document = renderJavascript()
                     coreScope.launch {
+                        if (socket !== devSocket) return@launch
                         currentJsonMessage = JSONObject(document)
                         val (root, errors) = parseRenderMessage(document, moduleRegistry)
                         rootNode = root
@@ -482,7 +679,7 @@ class MainActivity : ComponentActivity() {
                 val flatBytes = tryFetchCompressed("$devServerBaseUrl/bundle/artifact/$flatPath")
                 if (flatBytes != null) {
                     val (root, errors) = parseFlatBuffersMessage(flatBytes, moduleRegistry)
-                    CoroutineScope(Dispatchers.Main).launch {
+                    coreScope.launch {
                         rootNode = root
                         diagnosticErrors = errors + missingModules
                     }
@@ -491,7 +688,7 @@ class MainActivity : ComponentActivity() {
                     val fbBytes = tryFetchCompressed("$devServerBaseUrl/bundle/artifact/$binaryPath")
                     if (fbBytes != null) {
                         val (root, errors) = parseFlexBuffersMessage(fbBytes, moduleRegistry)
-                        CoroutineScope(Dispatchers.Main).launch {
+                        coreScope.launch {
                             rootNode = root
                             diagnosticErrors = errors + missingModules
                         }
@@ -499,7 +696,7 @@ class MainActivity : ComponentActivity() {
                         // Fallback to JSON
                         renderPayload = tryFetchCompressedString("$devServerBaseUrl/bundle/artifact/$renderPath")
                         if (renderPayload != null) {
-                            CoroutineScope(Dispatchers.Main).launch {
+                            coreScope.launch {
                                 val resolved = runtime.resolveStateTextNodes(renderPayload!!)
                                 currentJsonMessage = JSONObject(resolved)
                                 val (root, errors) = parseRenderMessage(resolved, moduleRegistry)
@@ -513,7 +710,7 @@ class MainActivity : ComponentActivity() {
                 // If we didn't have binary and didn't have WASM override, renderPayload was used above.
                 // If we HAVE WASM, we still want to use runtime.renderWasm() which returns JSON for now.
                 if (runtime.hasWasm()) {
-                    CoroutineScope(Dispatchers.Main).launch {
+                    coreScope.launch {
                         val renderTree = runtime.renderWasm()
                         if (renderTree != null) {
                             val resolved = runtime.resolveStateTextNodes(renderTree)
@@ -525,6 +722,7 @@ class MainActivity : ComponentActivity() {
                 }
             }.onFailure { error ->
                 coreScope.launch {
+                    if (socket !== devSocket) return@launch
                     if (runtime.hasJavascript()) {
                         diagnosticErrors = listOf(error.message ?: "JavaScript update rejected")
                         return@launch
@@ -549,16 +747,21 @@ class MainActivity : ComponentActivity() {
     private fun tryFetchCompressed(url: String): ByteArray? {
         val gzUrl = "$url.gz"
         val gzRequest = Request.Builder().url(gzUrl).build()
-        val gzResponse = try { client.newCall(gzRequest).execute() } catch (e: Exception) { null }
-        
-        if (gzResponse != null && gzResponse.isSuccessful) {
-            return gzResponse.body?.byteStream()?.let { 
-                java.util.zip.GZIPInputStream(it).readBytes() 
+        val compressed = runCatching {
+            client.newCall(gzRequest).execute().use { response ->
+                if (!response.isSuccessful) null else response.body?.byteStream()?.let { stream ->
+                    java.util.zip.GZIPInputStream(stream).use { it.readBytes() }
+                }
             }
+        }.getOrNull()
+        if (compressed != null) {
+            return compressed
         }
         
         val request = Request.Builder().url(url).build()
-        return try { client.newCall(request).execute().body?.bytes() } catch (e: Exception) { null }
+        return runCatching {
+            client.newCall(request).execute().use { if (it.isSuccessful) it.body?.bytes() else null }
+        }.getOrNull()
     }
 
     private fun tryFetchCompressedString(url: String): String? {
@@ -600,13 +803,25 @@ class MainActivity : ComponentActivity() {
         val method = json.getString("method")
         val payload = json.optJSONObject("payload") ?: JSONObject()
         val resultStateKey = json.optString("resultStateKey")
+        if (moduleName == "feather-device" && method == "hasModule") {
+            val available = runtime.getRegisteredModules().any { it.name == payload.optString("moduleName") }
+            sendStateAssignment(resultStateKey, available.toString())
+            return
+        }
+        if (moduleName == "feather-device" && method == "getRuntimeInfo") {
+            val modules = JSONObject()
+            runtime.getRegisteredModules().forEach { modules.put(it.name, it.version) }
+            sendStateAssignment(resultStateKey, JSONObject().put("runtime", runtimeName()).put("modules", modules).toString())
+            return
+        }
         
+        val baseContext = moduleContext()
         val context = if (resultStateKey.isNotEmpty()) {
-            moduleContext().copy(sendStateAssignment = { _, value ->
-                sendStateAssignment(resultStateKey, value)
+            baseContext.copy(sendStateAssignment = { _, value ->
+                baseContext.sendStateAssignment(resultStateKey, value)
             })
         } else {
-            moduleContext()
+            baseContext
         }
         
         if (!moduleRegistry.call(moduleName, method, payload, context)) {
@@ -621,7 +836,14 @@ class MainActivity : ComponentActivity() {
         moduleRegistry.register(WebViewModule())
         moduleRegistry.register(DeviceModule())
         moduleRegistry.register(DeviceInfoModule())
-        moduleRegistry.register(NavigationModule(::sendAction))
+        val host = java.lang.ref.WeakReference(this)
+        moduleRegistry.register(NavigationModule { action, payload ->
+            host.get()?.let { activity ->
+                activity.coreScope.launch {
+                    if (!activity.closing) activity.sendAction(action, payload)
+                }
+            }
+        })
         moduleRegistry.register(FilesModule())
         // Stub modules - disabled for v1 release (documented as coming soon in ROADMAP)
         // moduleRegistry.register(LocationModule())
@@ -646,10 +868,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun moduleContext(): FeatherModuleContext {
+        val host = java.lang.ref.WeakReference(this)
         return FeatherModuleContext(
             appContext = applicationContext,
             httpClient = client,
-            sendStateAssignment = ::sendStateAssignment,
+            sendStateAssignment = { key, value ->
+                host.get()?.let { activity ->
+                    activity.coreScope.launch {
+                        if (!activity.closing) activity.sendStateAssignment(key, value)
+                    }
+                }
+            },
         )
     }
 

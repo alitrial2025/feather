@@ -92,6 +92,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: brew install xcodegen
+      - name: Check iOS project pairing
+        run: |
+          swiftc host/ios/FeatherHost/ProjectConnection.swift host/ios/FeatherHost/AppLink.swift scripts/fixtures/ProjectConnectionSmoke.swift -o "$RUNNER_TEMP/feather-ios-pairing"
+          "$RUNNER_TEMP/feather-ios-pairing"
       - run: python3 scripts/build_ios_sample.py --test
       - uses: actions/upload-artifact@v4
         if: always()

@@ -66,22 +66,15 @@ fun QRScanner(
         if (hasCameraPermission) {
             val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
+            val disposed = remember { java.util.concurrent.atomic.AtomicBoolean() }
+            val binding = remember {
+                java.util.concurrent.atomic.AtomicReference<Pair<ProcessCameraProvider, Array<androidx.camera.core.UseCase>>?>()
+            }
             DisposableEffect(cameraExecutor) {
                 onDispose {
+                    disposed.set(true)
+                    binding.getAndSet(null)?.let { (provider, cases) -> provider.unbind(*cases) }
                     cameraExecutor.shutdown()
-                    try {
-                        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-                        cameraProviderFuture.addListener({
-                            try {
-                                val cameraProvider = cameraProviderFuture.get()
-                                cameraProvider.unbindAll()
-                            } catch (e: Exception) {
-                                // Ignore
-                            }
-                        }, ContextCompat.getMainExecutor(context))
-                    } catch (e: Exception) {
-                        // Ignore
-                    }
                 }
             }
 
@@ -102,7 +95,9 @@ fun QRScanner(
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
                     cameraProviderFuture.addListener({
-                        val cameraProvider = cameraProviderFuture.get()
+                        if (disposed.get()) return@addListener
+                        val cameraProvider = runCatching { cameraProviderFuture.get() }.getOrNull()
+                            ?: return@addListener
                         val preview = Preview.Builder().build().also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
                         }
@@ -113,14 +108,21 @@ fun QRScanner(
                             .build()
 
                         imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                            if (disposed.get()) {
+                                imageProxy.close()
+                                return@setAnalyzer
+                            }
                             val mediaImage = imageProxy.image
                             if (mediaImage != null) {
                                 val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                                scanner.process(image)
-                                    .addOnSuccessListener { barcodes ->
+                                val result = runCatching { scanner.process(image) }.getOrElse {
+                                    imageProxy.close()
+                                    return@setAnalyzer
+                                }
+                                result.addOnSuccessListener { barcodes ->
                                         for (barcode in barcodes) {
                                             barcode.rawValue?.let { value ->
-                                                if (!scanned) {
+                                                if (!disposed.get() && !scanned) {
                                                     scanned = true
                                                     onScan(value)
                                                 }
@@ -138,13 +140,13 @@ fun QRScanner(
                         val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                         try {
-                            cameraProvider.unbindAll()
                             cameraProvider.bindToLifecycle(
                                 lifecycleOwner,
                                 cameraSelector,
                                 preview,
                                 imageAnalysis
                             )
+                            binding.set(cameraProvider to arrayOf<androidx.camera.core.UseCase>(preview, imageAnalysis))
                         } catch (exc: Exception) {
                             // Handle error
                         }

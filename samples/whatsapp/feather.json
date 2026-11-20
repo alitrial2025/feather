@@ -2,6 +2,7 @@
   "entry": "App.kt",
   "runtime": "kotlin-js",
   "sdkVersion": "1.0.0",
+  "deep_links": [{"scheme": "feather", "host": "app", "path_prefix": "/chat"}],
   "metadata": {
     "app_id": "dev.feather.whatsapp.demo",
     "display_name": "WhatsApp · Feather",

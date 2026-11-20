@@ -1,0 +1,7 @@
+{
+  "Feather Column": {
+    "prefix": "column",
+    "body": ["Column {", "    Text(\"Hello from Feather\")", "    $0", "}"],
+    "description": "Stack Feather widgets vertically."
+  }
+}

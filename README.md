@@ -101,22 +101,30 @@ See [the detailed platform plan](docs/platform-plan.md) for the no-rebuild devel
 
 ### 1. Build the Platform
 ```bash
-# Compile the shared logic engine and the CLI tool
-cd cli
-cargo build --release
+cargo build --locked --manifest-path cli/Cargo.toml --release
+export PATH="$PWD/cli/target/release:$PATH"
 ```
 
 ### 2. Create a New Project
+
+Run these commands from the directory where you want the new project.
+
 ```bash
-feather-cli init --name my-app
+feather-cli init my-app
 cd my-app
 ```
 
 ### 3. Start the Dev Server
 ```bash
-feather-cli start
+feather-cli start --phone
 ```
-Connect your Android or iOS host shell by scanning the QR code in the terminal or opening `http://localhost:8080/devtools` to debug.
+This starter uses the Kotlin/JS runtime and requires Python 3 and JDK 17 or
+newer. Use `feather-cli init my-chat --template chat` for the chat starter.
+Open the printed connection page for the project QR. Append `devtools` to
+that URL to open the dashboard. For an
+Android phone on the same LAN, add `--host 0.0.0.0` and scan the QR in
+Feather Go. The CLI generates a new private session URL on each start. See the
+[phone demo guide](docs/phone-demo.md) for the APK and cloud forwarding setup.
 
 ---
 
@@ -127,6 +135,9 @@ Connect your Android or iOS host shell by scanning the QR code in the terminal o
 | `start` | Starts dev server with instant stateful hot-reload and launches `/devtools` dashboard. |
 | `build` | Generates an **optimized production bundle** (.fxb/.mp) ready for static delivery. |
 | `doctor` | Validates environment, local compiler toolchains, and binary protocol support. |
+| `inspect` | Reports unsupported widget paths in a Kotlin/JS render tree for Android and iOS. |
+| `rewrite` | Converts a selected React Native, Compose, or Android XML screen into a verified Feather project. [Migration guide](docs/rewrite.md) |
+| `release` | Verifies signed Kotlin/JS bundles and manages local promotion and rollback. [Release channels](docs/release-channels.md) |
 | `install` | Adds a shared module (Camera, Maps, etc.) to the project configurations. |
 
 ---

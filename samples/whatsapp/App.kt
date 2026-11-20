@@ -1,10 +1,33 @@
 package feather.whatsapp
 
-import dev.feather.sdk.*
+import dev.feather.sdk.Box
+import dev.feather.sdk.Button
+import dev.feather.sdk.ButtonStyle
+import dev.feather.sdk.Clickable
+import dev.feather.sdk.Column
+import dev.feather.sdk.ContainerStyle
+import dev.feather.sdk.FeatherApp
+import dev.feather.sdk.FloatingActionButton
+import dev.feather.sdk.Icon
+import dev.feather.sdk.IconButton
+import dev.feather.sdk.InputStyle
+import dev.feather.sdk.LazyColumn
+import dev.feather.sdk.Row
+import dev.feather.sdk.Scaffold
+import dev.feather.sdk.Spacer
+import dev.feather.sdk.Text
+import dev.feather.sdk.TextInput
+import dev.feather.sdk.TextStyle
+import dev.feather.sdk.Widget
+import dev.feather.sdk.actionText
+import dev.feather.sdk.callModuleMsgpack
+import dev.feather.sdk.getState
+import dev.feather.sdk.getStateJson
+import dev.feather.sdk.installApp
+import dev.feather.sdk.setState
+import dev.feather.sdk.setStateJson
+import dev.feather.sdk.setStateText
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 
 @Serializable
 data class Message(val text: String, val mine: Boolean = false, val time: String = "10:42")
@@ -12,6 +35,8 @@ data class Chat(val id: String, val name: String, val initials: String, val prev
     val color: String, val unread: Int = 0, val group: Boolean = false, val favorite: Boolean = false)
 
 class WhatsApp : FeatherApp() {
+    private val storageKey = "dev.feather.whatsapp.demo.history.v1"
+    private val restoredKey = "chat:restored-history"
     private val green = "#008069"
     private val ink = "#111B21"
     private val muted = "#667781"
@@ -25,42 +50,74 @@ class WhatsApp : FeatherApp() {
         Chat("james", "James Mwangi", "JM", "Let's catch up this weekend", "Monday", "#D9DEF2")
     )
     private fun read(key: String, fallback: String = "") = getState(key) ?: fallback
-    private fun write(key: String, value: String) = setState(key, Json.encodeToString(value))
-    private fun messages(id: String): List<Message> = getState("messages:$id")?.let {
-        runCatching { Json.decodeFromString<List<Message>>(it) }.getOrNull()
-    } ?: listOf(Message("Hey! How's your day going?", time = "10:38"),
+    private fun standalone() = getState("host_standalone") == "true"
+
+    private fun recordedMessages(id: String): List<Message>? =
+        getStateJson<List<Message>>("messages:$id")
+            ?: getStateJson<Map<String, List<Message>>>(restoredKey)?.get(id)
+
+    private fun messages(id: String): List<Message> = recordedMessages(id)
+        ?: listOf(Message("Hey! How's your day going?", time = "10:38"),
         Message("Really well! Just getting a few things done.", true, "10:39"),
         Message("Are we still meeting at 6?", time = "10:42"))
 
     override fun onCreate() {
-        if (getState("screen") == null) write("screen", "chats")
+        if (getState("screen") == null) setStateText("screen", "chats")
+        if (standalone() && getState("chat:restore-requested") == null) {
+            setState("chat:restore-requested", "true")
+            callModuleMsgpack("feather-storage", "get", mapOf("key" to storageKey), restoredKey)
+        }
+        println("Feather Chat ready")
+    }
+
+    private fun openConversation(id: String) {
+        if (chats.none { it.id == id }) return
+        setStateText("chat", id)
+        setStateText("screen", "conversation")
+        setState("read:$id", "true")
+        setStateText("notice", "")
+    }
+
+    private fun persistHistory() {
+        if (!standalone()) return
+        val history = chats.mapNotNull { chat ->
+            recordedMessages(chat.id)?.let { messages ->
+                chat.id to messages.map { mapOf("text" to it.text, "mine" to it.mine, "time" to it.time) }
+            }
+        }.toMap()
+        callModuleMsgpack("feather-storage", "set", mapOf("key" to storageKey, "value" to history), "")
     }
 
     override fun handleAction(action: String, payload: String?) {
-        val value = payload?.let { runCatching { Json.decodeFromString<String>(it) }.getOrDefault(it) }.orEmpty()
+        val value = actionText(payload)
         when {
-            action.startsWith("open:") -> {
-                val id = action.removePrefix("open:")
-                write("chat", id); write("screen", "conversation"); setState("read:$id", "true"); write("notice", "")
-            }
-            action.startsWith("tab:") -> { write("screen", action.removePrefix("tab:")); write("query", "") }
-            action.startsWith("filter:") -> write("filter", action.removePrefix("filter:"))
-            action == "back" -> { write("screen", "chats"); write("notice", "") }
-            action == "new" -> write("screen", "contacts")
+            action.startsWith("open:") -> openConversation(action.removePrefix("open:"))
+            action == "__deepLink" && value.startsWith("/chat/") -> openConversation(value.removePrefix("/chat/"))
+            action.startsWith("tab:") -> { setStateText("screen", action.removePrefix("tab:")); setStateText("query", "") }
+            action.startsWith("filter:") -> setStateText("filter", action.removePrefix("filter:"))
+            action == "back" -> { setStateText("screen", "chats"); setStateText("notice", "") }
+            action == "new" -> setStateText("screen", "contacts")
             action == "search" -> setState("searching", if (read("searching") == "true") "false" else "true")
-            action == "query" -> write("query", value)
-            action == "draft" -> write("draft:${read("chat")}", value)
+            action == "query" -> setStateText("query", value)
+            action == "draft" -> setStateText("draft:${read("chat")}", value)
             action == "send" -> {
                 val id = read("chat")
                 val text = read("draft:$id").trim()
+                if (standalone() && getState(restoredKey) == null) {
+                    setStateText("notice", "Chat history is still loading.")
+                    return
+                }
                 if (text.isNotEmpty()) {
-                    setState("messages:$id", Json.encodeToString(messages(id) + Message(text, true, "Now")))
-                    write("draft:$id", "")
+                    setStateJson("messages:$id", messages(id) + Message(text, true, "Now"))
+                    setStateText("draft:$id", "")
+                    setStateText("notice", "")
+                    persistHistory()
+                    println("Feather Chat: message sent")
                 }
             }
-            action == "status-draft" -> write("status-draft", value)
-            action == "post-status" -> { write("status", read("status-draft")); write("status-draft", "") }
-            action == "call" -> write("notice", "Voice and video calls are coming next.")
+            action == "status-draft" -> setStateText("status-draft", value)
+            action == "post-status" -> { setStateText("status", read("status-draft")); setStateText("status-draft", "") }
+            action == "call" -> setStateText("notice", "Voice and video calls are coming next.")
         }
     }
 
@@ -92,7 +149,7 @@ class WhatsApp : FeatherApp() {
         style = ContainerStyle(fillMaxWidth = true, background = "#FFFFFF")
     )
     private fun chatRow(chat: Chat): Widget {
-        val sent = getState("messages:${chat.id}")?.let { messages(chat.id).lastOrNull() }
+        val sent = recordedMessages(chat.id)?.lastOrNull()
         val unread = if (read("read:${chat.id}") == "true") 0 else chat.unread
         return Clickable("open:${chat.id}", Row(avatar(chat),
             Column(Row(text(chat.name, 16, bold = true), Spacer(), text(sent?.time ?: chat.time, 11, if (unread > 0) green else muted),
@@ -143,7 +200,7 @@ class WhatsApp : FeatherApp() {
             bottomBar = Column(
                 if (read("notice").isNotEmpty()) text(read("notice"), 12, muted) else Box(),
                 Row(TextInput(value = read("draft:${chat.id}"), action = "draft", placeholder = "Message",
-                    style = InputStyle(width = "280", background = "#FFFFFF", cornerRadius = 25, padding = 12)),
+                    style = InputStyle(width = "fill", background = "#FFFFFF", cornerRadius = 25, padding = 12)),
                     IconButton("send", "send", background = green, color = "#FFFFFF"),
                     style = ContainerStyle(fillMaxWidth = true, padding = 10, spacing = 8, alignment = "center", background = "#EFEAE2"))),
             body = LazyColumn(bubbles, style = ContainerStyle(fillMaxWidth = true, fillMaxHeight = true, paddingTop = 14, background = "#EFEAE2")))

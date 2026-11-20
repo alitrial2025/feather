@@ -67,16 +67,7 @@ struct LauncherScreen: View {
             if showScanner {
                 QRScannerView(onScan: { scanned in
                     showScanner = false
-                    let deepLinkPrefix = "feather://open?url="
-                    var cleanScanned = scanned
-                    if scanned.hasPrefix(deepLinkPrefix) {
-                        cleanScanned = scanned.replacingOccurrences(of: deepLinkPrefix, with: "")
-                        if let range = cleanScanned.range(of: "&") {
-                            cleanScanned = String(cleanScanned[..<range.lowerBound])
-                        }
-                        cleanScanned = cleanScanned.removingPercentEncoding ?? cleanScanned
-                    }
-                    onConnect(cleanScanned)
+                    onConnect(scanned)
                 }, onClose: {
                     showScanner = false
                 })

@@ -55,13 +55,58 @@ code or to the set of compiled-in native modules still need a new APK.
 
 The demo currently supports seeded conversations, filters, search, locally
 sending messages, new-chat selection, group listing, and posting local status.
-Messages survive compatible code refresh, but do not yet survive a process
-restart. Contacts are fixtures; this does not connect to WhatsApp. Accounts,
-server persistence, real multi-user messaging, push delivery, attachments,
-encryption, and voice/video calling remain to be implemented. Calls are
-explicitly marked as coming next.
+Messages and drafts survive compatible code refresh. The standalone app also
+saves sent messages on the device and restores them on launch. Contacts are
+fixtures. Accounts, server persistence, multi-user messaging, push delivery,
+attachments, encryption, and voice/video calling remain open.
+
+### Standalone Chat acceptance check
+
+Build the ARM64 debug APK with NDK 27.0.12077973 and the Android SDK configured:
+
+```sh
+python3 scripts/build_android_sample.py --project samples/whatsapp \
+  --output build/native/android/feather-chat-debug.apk
+```
+
+The app accepts `feather://app/chat/amina` and other known conversation IDs.
+On a connected device or emulator, add
+`--test-device --test-class dev.feather.host.ChatDeviceTest` to the build
+command to exercise app-link delivery, sending a message, and reopening the
+activity with its history. This build uses a debug APK signature and embeds a
+verified, signed Kotlin/JS bundle.
 
 ## Validation and next milestones
+
+### Terminal logs and compatibility checks
+
+With `feather-cli start --phone` running, Kotlin `println(...)` and SDK
+`console(...)` appear in the same terminal. Preview execution is tagged
+`[Preview LOG]`. Updated debug hosts forward app logs as `[Android LOG]` or
+`[iOS LOG]`. Runtime errors include the exception message and generated
+`app.js` stack frames where available.
+
+Use the compatibility check before opening a project on a device:
+
+```sh
+feather-cli inspect --project samples/whatsapp --action new --action back --action open:amina
+```
+
+The check compares widget types in each rendered screen with the current
+Android and iOS JSON protocol parsers and reports incompatible widget paths.
+It also checks known dropped fields such as iOS top-bar actions. Layout,
+accessibility, native modules, and device behavior need their own checks.
+
+### Opt-in production runtime diagnostics
+
+A standalone Kotlin/JS host can opt into local diagnostic records. Add
+`<meta-data android:name="dev.feather.host.PRODUCTION_DIAGNOSTICS" android:value="true" />`
+inside the Android application's manifest, or set the Boolean
+`FeatherProductionDiagnostics` to `true` in the iOS app's Info.plist. Read
+the records under `FeatherDiagnostics` in Android Logcat or the iOS device
+console. Records include the host version and build, and include the active
+app identity, bundle version, and JavaScript SHA-256 after a verified bundle
+loads. This path writes to the platform's local log and does not upload reports.
 
 `python3 scripts/smoke_phone_demo.py` checks the scoped connection page, APK
 route, QR identity, signed artifacts, and native Kotlin/JNA execution of chat

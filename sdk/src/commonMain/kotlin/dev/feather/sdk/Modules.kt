@@ -250,9 +250,16 @@ object Sensors {
 object Platform {
     @Serializable class EmptyRequest
     
-    /** Checks if a specific module is available on the current host. */
+    /** Writes a Boolean to [stateKey] indicating whether the current engine has registered the module. */
     fun hasModule(moduleName: String, stateKey: String): String =
         moduleCall("feather-device", "hasModule", mapOf("moduleName" to moduleName), stateKey)
+
+    @Serializable
+    data class RuntimeInfo(val runtime: String, val modules: Map<String, String>)
+
+    /** Request the running engine and its native module versions into [stateKey]. */
+    fun getRuntimeInfo(stateKey: String): String =
+        moduleCall("feather-device", "getRuntimeInfo", EmptyRequest(), stateKey)
         
     /** Gets information about the current device (OS, version, model). */
     fun getDeviceInfo(stateKey: String): String =

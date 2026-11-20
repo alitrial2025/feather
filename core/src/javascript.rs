@@ -1,6 +1,7 @@
 //! Experimental no-JIT runtime for compiler-produced Kotlin/JS applications.
 use crate::{ModuleCall, state::StateValue};
 use rquickjs::{Context, Function, Runtime};
+use rquickjs::context::EvalOptions;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -165,7 +166,28 @@ impl JavaScriptRuntime {
                     .map_err(|error| error.to_string())?,
                 )
                 .map_err(|error| error.to_string())?;
-            ctx.eval::<(), _>(source)
+            // Kotlin's println writes through console.log in a non-Node runtime.
+            // Keep the same bounded native sink used by SDK console(message).
+            ctx.eval::<(), _>(r#"
+                (() => {
+                    const write = globalThis.__featherLog;
+                    const print = (level, args) => write(level + args.map(value => {
+                        if (typeof value === "string") return value;
+                        try { return value instanceof Error ? (value.stack || String(value)) : (JSON.stringify(value) ?? String(value)); }
+                        catch (_) { return String(value); }
+                    }).join(" "));
+                    globalThis.console = {
+                        log: (...args) => print("", args),
+                        info: (...args) => print("", args),
+                        debug: (...args) => print("[DEBUG] ", args),
+                        warn: (...args) => print("[WARN] ", args),
+                        error: (...args) => print("[ERROR] ", args)
+                    };
+                })();
+            "#).map_err(|error| js_error(&ctx, error))?;
+            let mut options = EvalOptions::default();
+            options.filename = Some("app.js".into());
+            ctx.eval_with_options::<(), _>(source, options)
                 .map_err(|error| js_error(&ctx, error))?;
             globals
                 .get::<_, Function>("__featherRender")
@@ -243,12 +265,24 @@ impl JavaScriptRuntime {
 fn js_error(ctx: &rquickjs::Ctx<'_>, error: rquickjs::Error) -> String {
     if error.is_exception() {
         let value = ctx.catch();
-        if let Some(exception) = value.as_exception() {
-            return format!(
-                "{}\n{}",
-                exception.message().unwrap_or_default(),
-                exception.stack().unwrap_or_default()
-            );
+        // Kotlin Throwable instances can carry message and stack properties
+        // without being QuickJS Error objects.
+        if let Some(object) = value.as_object() {
+            let field = |name| match object.get::<_, String>(name) {
+                Ok(text) => Some(text),
+                Err(error) => {
+                    if error.is_exception() {
+                        ctx.catch();
+                    }
+                    None
+                }
+            };
+            let message = field("message");
+            let stack = field("stack");
+            if message.is_some() || stack.is_some() {
+                return [message, stack].into_iter().flatten()
+                    .filter(|text| !text.is_empty()).collect::<Vec<_>>().join("\n");
+            }
         }
         return format!("JavaScript exception: {value:?}");
     }
@@ -404,3 +438,19 @@ mod module_action_tests {
         assert!(app.drain_diagnostics().is_empty());
     }
 }
+    #[test]
+    fn a_paused_host_keeps_only_recent_events_and_diagnostics() {
+        let app = crate::AppRuntime::new();
+        for n in 0..300 {
+            app.push_native_event("queued".into(), n.to_string());
+            app.report_diagnostic("error".into(), n.to_string());
+        }
+        let events = app.drain_native_events();
+        let diagnostics = app.drain_diagnostics();
+        assert_eq!(events.len(), 256);
+        assert_eq!(diagnostics.len(), 256);
+        assert_eq!(events.first().unwrap().payload, "44");
+        assert_eq!(diagnostics.last().unwrap().message, "299");
+        assert!(app.drain_native_events().is_empty());
+        assert!(app.drain_diagnostics().is_empty());
+    }

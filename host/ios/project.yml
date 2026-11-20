@@ -4,6 +4,9 @@ options:
   deploymentTarget:
     iOS: '16.0'
 settings:
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) DEBUG'
   base:
     SWIFT_VERSION: '5.0'
     PRODUCT_BUNDLE_IDENTIFIER: dev.feather.host
@@ -30,6 +33,9 @@ targets:
         CFBundleDisplayName: Feather
         UILaunchScreen: {}
         FeatherBundlePublicKey: '$(FEATHER_BUNDLE_PUBLIC_KEY)'
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.feather.host.project
+            CFBundleURLSchemes: [feather]
         NSCameraUsageDescription: Scan a Feather development QR code or use camera modules.
         NSMicrophoneUsageDescription: Use audio recording modules.
         NSLocationWhenInUseUsageDescription: Use location modules.

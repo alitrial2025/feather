@@ -43,6 +43,8 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     var captureSession: AVCaptureSession!
     var previewLayer: AVCaptureVideoPreviewLayer!
     weak var delegate: QRScannerViewControllerDelegate?
+    private let captureQueue = DispatchQueue(label: "dev.feather.qr-capture")
+    private var deliveredCode = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -96,7 +98,14 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
             closeButton.heightAnchor.constraint(equalToConstant: 44)
         ])
 
-        captureSession.startRunning()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        deliveredCode = false
+        if let session = captureSession, !session.inputs.isEmpty, !session.outputs.isEmpty {
+            captureQueue.async { if !session.isRunning { session.startRunning() } }
+        }
     }
 
     @objc func closeTapped() {
@@ -104,20 +113,22 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+        guard !deliveredCode else { return }
         if let metadataObject = metadataObjects.first {
             guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject else { return }
             guard let stringValue = readableObject.stringValue else { return }
+            deliveredCode = true
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
             delegate?.didFindCode(stringValue)
-            captureSession.stopRunning()
         }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
 
-        if (captureSession?.isRunning == true) {
-            captureSession.stopRunning()
+        deliveredCode = true
+        if let session = captureSession {
+            captureQueue.async { if session.isRunning { session.stopRunning() } }
         }
     }
 }
